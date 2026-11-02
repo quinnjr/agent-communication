@@ -132,7 +132,7 @@ pub struct UnsupportedSchema {
     pub found: String,
 }
 
-/// Handle to the agentmail database.
+/// Handle to the agent-communication database.
 pub struct Store {
     db: Database,
 }
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn store_open_rejects_unknown_schema_version() {
         let dir = tempfile::TempDir::new().unwrap();
-        let path = dir.path().join("agentmail.redb");
+        let path = dir.path().join("agent-communication.redb");
         let store = Store::open(&path).unwrap();
         let txn = store.db.begin_write().unwrap();
         txn.open_table(META)
@@ -291,7 +291,7 @@ mod tests {
     #[test]
     fn migrates_schema_1_mailbox() {
         let dir = tempfile::TempDir::new().unwrap();
-        let path = dir.path().join("agentmail.redb");
+        let path = dir.path().join("agent-communication.redb");
         let addr = "backend-aaaaaaaa";
         {
             // A schema-1 database as the core build wrote it: no sessions
@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn schema_1_build_reaches_its_version_check_on_schema_2() {
         let dir = tempfile::TempDir::new().unwrap();
-        let path = dir.path().join("agentmail.redb");
+        let path = dir.path().join("agent-communication.redb");
         let store = Store::open(&path).unwrap();
         let txn = store.db.begin_write().unwrap();
         {
@@ -400,7 +400,7 @@ mod tests {
     #[test]
     fn store_open_records_schema_version() {
         let dir = tempfile::TempDir::new().unwrap();
-        let store = Store::open(&dir.path().join("agentmail.redb")).unwrap();
+        let store = Store::open(&dir.path().join("agent-communication.redb")).unwrap();
         let txn = store.read().unwrap();
         let meta = txn.open_table(META).unwrap();
         assert_eq!(

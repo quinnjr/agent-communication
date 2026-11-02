@@ -68,7 +68,7 @@ pub const MAX_SOCKET_PATH_BYTES: usize = SUN_PATH_MAX - STAGING_EXTRA_BYTES;
 fn socket_too_long(socket: &Path) -> anyhow::Error {
     anyhow::anyhow!(
         "socket path {} is too long ({} bytes; at most {MAX_SOCKET_PATH_BYTES}): \
-         set AGENTMAIL_SOCKET or XDG_RUNTIME_DIR to a shorter path",
+         set AGENT_COMMUNICATION_SOCKET or XDG_RUNTIME_DIR to a shorter path",
         socket.display(),
         socket.as_os_str().len(),
     )
@@ -172,7 +172,10 @@ fn write_lock_record(lock: &File, path: &Path, record: &LockRecord) {
         .write_all_at(&bytes, 0)
         .and_then(|()| lock.set_len(bytes.len() as u64));
     if let Err(e) = res {
-        eprintln!("agentmail daemon: writing {}: {e}", path.display());
+        eprintln!(
+            "agent-communication daemon: writing {}: {e}",
+            path.display()
+        );
     }
 }
 
@@ -265,7 +268,7 @@ async fn wait_for_lock(lock: &File, path: &Path) -> Result<bool> {
         return Ok(true);
     }
     eprintln!(
-        "agentmail daemon: another daemon holds {}; waiting for it to exit",
+        "agent-communication daemon: another daemon holds {}; waiting for it to exit",
         path.display()
     );
     loop {
@@ -296,7 +299,10 @@ async fn announce_waiter(paths: &Paths, record: &LockRecord) -> Option<File> {
     let file = match file {
         Ok(file) => file,
         Err(e) => {
-            eprintln!("agentmail daemon: opening {}: {e}", path.display());
+            eprintln!(
+                "agent-communication daemon: opening {}: {e}",
+                path.display()
+            );
             return None;
         }
     };
@@ -307,7 +313,7 @@ async fn announce_waiter(paths: &Paths, record: &LockRecord) -> Option<File> {
         }
         Ok(false) => None,
         Err(e) => {
-            eprintln!("agentmail daemon: {e:#}");
+            eprintln!("agent-communication daemon: {e:#}");
             None
         }
     }
@@ -346,14 +352,14 @@ pub fn shutdown_signal() -> Result<impl Future<Output = ()>> {
             _ = term.recv() => {}
             _ = int.recv() => {}
         }
-        eprintln!("agentmail daemon: signal received; finishing in-flight requests");
+        eprintln!("agent-communication daemon: signal received; finishing in-flight requests");
         tokio::spawn(async move {
             tokio::select! {
                 _ = term.recv() => {}
                 _ = int.recv() => {}
             }
             eprintln!(
-                "agentmail daemon: second signal; exiting without waiting for \
+                "agent-communication daemon: second signal; exiting without waiting for \
                  in-flight requests"
             );
             handler::kill_running_commands();
@@ -500,7 +506,7 @@ pub async fn serve_until(cfg: DaemonConfig, stop: impl Future<Output = ()>) -> R
                     ));
                 }
                 Err(e) => {
-                    eprintln!("agentmail daemon: accept failed: {e}");
+                    eprintln!("agent-communication daemon: accept failed: {e}");
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
             },
@@ -572,7 +578,7 @@ async fn release_store(store: Weak<Store>, lock: File, warn_every: Duration) {
     while store.strong_count() > 0 {
         if Instant::now() >= next_warn {
             eprintln!(
-                "agentmail daemon: waiting for in-flight requests to finish ({:.1}s)",
+                "agent-communication daemon: waiting for in-flight requests to finish ({:.1}s)",
                 started.elapsed().as_secs_f64()
             );
             next_warn += warn_every;
@@ -1238,7 +1244,7 @@ mod tests {
     fn handler_with(dir: &tempfile::TempDir, with_mail: bool) -> Arc<Handler> {
         use crate::model::Kind;
         use crate::store::{NewMessage, RegisterReq};
-        let store = Store::open(&dir.path().join("agentmail.redb")).unwrap();
+        let store = Store::open(&dir.path().join("agent-communication.redb")).unwrap();
         if with_mail {
             let req = RegisterReq {
                 name: "a".into(),

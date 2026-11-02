@@ -42,9 +42,9 @@ pub const MAX_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Caller {
-    /// The human operator (`--as human` or `AGENTMAIL_HUMAN=1`).
+    /// The human operator (`--as human` or `AGENT_COMMUNICATION_HUMAN=1`).
     Human,
-    /// An explicit agent address (`AGENTMAIL_ADDRESS`, or a registered MCP
+    /// An explicit agent address (`AGENT_COMMUNICATION_ADDRESS`, or a registered MCP
     /// session).
     Address { address: String },
     /// The calling process's ancestry, nearest first; the daemon picks the

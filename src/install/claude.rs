@@ -42,7 +42,7 @@ fn files(o: &InstallOpts, env: &Env) -> (PathBuf, PathBuf) {
     }
 }
 
-/// agentmail's hook groups per event, in the order they are written.
+/// agent-communication's hook groups per event, in the order they are written.
 fn hook_groups(bin: &str) -> Vec<(&'static str, Vec<Value>)> {
     let cmd = |event: &str| format!("{} hook {event} --harness claude-code", shell_quote(bin));
     let quick =
@@ -85,7 +85,7 @@ fn is_owned_hook(h: &Value, bin: &Path) -> bool {
         .is_some_and(|c| owns_hook(c, bin))
 }
 
-/// Remove agentmail's hooks from an event's groups, and the groups that
+/// Remove agent-communication's hooks from an event's groups, and the groups that
 /// held nothing else.
 fn strip(groups: &mut Vec<Value>, bin: &Path) {
     groups.retain_mut(|g| {
@@ -98,21 +98,21 @@ fn strip(groups: &mut Vec<Value>, bin: &Path) {
     });
 }
 
-/// The keys of a hook entry that agentmail sets; others (such as a
+/// The keys of a hook entry that agent-communication sets; others (such as a
 /// `statusMessage` the user added) are kept.
 const HOOK_KEYS: [&str; 5] = ["type", "command", "timeout", "async", "asyncRewake"];
-/// The keys of the MCP server entry that agentmail sets; others (such as
+/// The keys of the MCP server entry that agent-communication sets; others (such as
 /// `env`) are kept.
 const SERVER_KEYS: [&str; 3] = ["type", "command", "args"];
 
-/// Which of agentmail's hooks a command runs: the word after `hook`.
+/// Which of agent-communication's hooks a command runs: the word after `hook`.
 fn hook_kind(h: &Value) -> Option<String> {
     let cmd = h.get("command")?.as_str()?;
     shell_words(cmd, 3).into_iter().nth(2)
 }
 
-/// `hooks` with agentmail's entries made `want` (none to uninstall).
-/// Events left empty stay; [`JsonFile::change`] removes the ones agentmail
+/// `hooks` with agent-communication's entries made `want` (none to uninstall).
+/// Events left empty stay; [`JsonFile::change`] removes the ones agent-communication
 /// emptied.
 fn edit_hooks(
     hooks: &mut Map<String, Value>,
@@ -129,7 +129,7 @@ fn edit_hooks(
             // Not ours to fix; only refuse when we have to add to it.
             if !wanted.is_empty() {
                 bail!(
-                    "`hooks.{ev}` in {} is not a JSON array; agentmail left the file unchanged",
+                    "`hooks.{ev}` in {} is not a JSON array; agent-communication left the file unchanged",
                     path.display()
                 );
             }
@@ -145,14 +145,14 @@ fn edit_hooks(
     Ok(())
 }
 
-/// One event's groups with agentmail's hooks made `wanted`. A hook of
-/// agentmail's already there for the same kind (`stop`, `wait`, ...) is
+/// One event's groups with agent-communication's hooks made `wanted`. A hook of
+/// agent-communication's already there for the same kind (`stop`, `wait`, ...) is
 /// updated in place, keeping its group (and so its matcher) and the keys
-/// agentmail does not set; the rest of agentmail's hooks are removed, with
+/// agent-communication does not set; the rest of agent-communication's hooks are removed, with
 /// the groups that held nothing else; missing ones are added to the group
 /// holding their siblings, else as a new group.
 fn merge_event(groups: &mut Vec<Value>, wanted: &[Value], bin: &Path) {
-    // (wanted group, kind, hook) for every hook agentmail wants here.
+    // (wanted group, kind, hook) for every hook agent-communication wants here.
     let want: Vec<(usize, Option<String>, &Value)> = wanted
         .iter()
         .enumerate()
@@ -220,7 +220,7 @@ fn merge_event(groups: &mut Vec<Value>, wanted: &[Value], bin: &Path) {
     });
 }
 
-/// Remove agentmail's hooks from a settings object, for
+/// Remove agent-communication's hooks from a settings object, for
 /// [`JsonFile::change`].
 fn strip_settings(v: &mut Map<String, Value>, bin: &Path) {
     if let Some(Value::Object(hooks)) = v.get_mut("hooks") {
@@ -232,10 +232,10 @@ fn strip_settings(v: &mut Map<String, Value>, bin: &Path) {
     }
 }
 
-/// Remove agentmail's MCP server, for [`JsonFile::change`].
+/// Remove agent-communication's MCP server, for [`JsonFile::change`].
 fn strip_mcp(v: &mut Map<String, Value>) {
     if let Some(Value::Object(servers)) = v.get_mut("mcpServers") {
-        servers.shift_remove("agentmail");
+        servers.shift_remove("agent-communication");
     }
 }
 
@@ -244,7 +244,7 @@ pub(super) fn plan(o: &InstallOpts, env: &Env, install: bool) -> Result<Vec<Chan
     let (settings_path, mcp_path) = files(o, env);
     let groups = hook_groups(bin);
     // Whatever the binary is called, the hooks written are recognised as
-    // agentmail's: else a second install would add them again and
+    // agent-communication's: else a second install would add them again and
     // uninstall would leave them.
     for (ev, gs) in &groups {
         for g in gs {
@@ -252,7 +252,7 @@ pub(super) fn plan(o: &InstallOpts, env: &Env, install: bool) -> Result<Vec<Chan
                 g["hooks"]
                     .as_array()
                     .is_some_and(|hs| hs.iter().all(|h| is_owned_hook(h, &o.bin))),
-                "agentmail would not recognise its own {ev} hook; nothing was changed"
+                "agent-communication would not recognise its own {ev} hook; nothing was changed"
             );
         }
     }
@@ -269,7 +269,7 @@ pub(super) fn plan(o: &InstallOpts, env: &Env, install: bool) -> Result<Vec<Chan
         if install {
             ByHand::Add(&snippet)
         } else {
-            ByHand::Remove("the `agentmail hook` commands under `hooks`")
+            ByHand::Remove("the `agent-communication hook` commands under `hooks`")
         },
     )?;
     let mut new = settings.value.clone();
@@ -280,27 +280,32 @@ pub(super) fn plan(o: &InstallOpts, env: &Env, install: bool) -> Result<Vec<Chan
         edit_hooks(hooks, &[], &o.bin, &settings.path)?;
     }
 
-    let mcp_snippet =
-        || super::json::pretty(&json!({"mcpServers": {"agentmail": server(bin)}}), "  ", "");
+    let mcp_snippet = || {
+        super::json::pretty(
+            &json!({"mcpServers": {"agent-communication": server(bin)}}),
+            "  ",
+            "",
+        )
+    };
     let mcp = JsonFile::read(
         mcp_path,
         if install {
             ByHand::Add(&mcp_snippet)
         } else {
-            ByHand::Remove("`mcpServers.agentmail`")
+            ByHand::Remove("`mcpServers.agent-communication`")
         },
     )?;
     let mut new_mcp = mcp.value.clone();
     if install {
         let servers = object_at(&mut new_mcp, "mcpServers", &mcp.path)?;
         let want = server(bin);
-        match servers.get_mut("agentmail") {
+        match servers.get_mut("agent-communication") {
             // Keep what the user added to the entry, such as `env`.
             Some(Value::Object(cur)) => {
                 merge_keys(cur, want.as_object().expect("an object"), &SERVER_KEYS)
             }
             _ => {
-                servers.insert("agentmail".into(), want);
+                servers.insert("agent-communication".into(), want);
             }
         }
     } else {

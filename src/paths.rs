@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
 
-const DB_FILE: &str = "agentmail.redb";
-const SOCKET_FILE: &str = "agentmail.sock";
-const LOCK_FILE: &str = "agentmail.lock";
-const WAITER_FILE: &str = "agentmail.waiter";
+const DB_FILE: &str = "agent-communication.redb";
+const SOCKET_FILE: &str = "agent-communication.sock";
+const LOCK_FILE: &str = "agent-communication.lock";
+const WAITER_FILE: &str = "agent-communication.waiter";
 const STARTUP_ERROR_FILE: &str = "daemon.err";
 
 /// What a daemon writes to the lock file once it holds the lock, read by
@@ -115,7 +115,7 @@ fn held(path: &Path) -> bool {
     }
 }
 
-/// Where agentmail keeps its state.
+/// Where agent-communication keeps its state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Paths {
     /// Directory holding the database and lock file.
@@ -131,9 +131,9 @@ pub struct Paths {
 impl Paths {
     /// Resolve paths from the process environment.
     ///
-    /// Data dir: `AGENTMAIL_DATA_DIR`, else `$XDG_DATA_HOME/agentmail`, else
-    /// `$HOME/.local/share/agentmail`. Socket: `AGENTMAIL_SOCKET`, else
-    /// `$XDG_RUNTIME_DIR/agentmail.sock`, else `<data_dir>/agentmail.sock`.
+    /// Data dir: `AGENT_COMMUNICATION_DATA_DIR`, else `$XDG_DATA_HOME/agent-communication`, else
+    /// `$HOME/.local/share/agent-communication`. Socket: `AGENT_COMMUNICATION_SOCKET`, else
+    /// `$XDG_RUNTIME_DIR/agent-communication.sock`, else `<data_dir>/agent-communication.sock`.
     ///
     /// Values are read with [`std::env::var_os`], so non-UTF-8 paths are used
     /// as given rather than treated as unset.
@@ -149,7 +149,7 @@ impl Paths {
     /// Per the XDG Base Directory spec, relative `XDG_DATA_HOME` and
     /// `XDG_RUNTIME_DIR` values are ignored, as is a relative `HOME`, so every
     /// process resolves the same paths regardless of its working directory.
-    /// For the same reason, relative `AGENTMAIL_DATA_DIR` and `AGENTMAIL_SOCKET`
+    /// For the same reason, relative `AGENT_COMMUNICATION_DATA_DIR` and `AGENT_COMMUNICATION_SOCKET`
     /// overrides are rejected with an error: an explicit override that cannot
     /// be honoured consistently should fail loudly rather than fall back.
     pub fn from_vars(get: impl Fn(&str) -> Option<OsString>) -> Result<Paths> {
@@ -164,17 +164,21 @@ impl Paths {
             }
         };
 
-        let data_dir = if let Some(dir) = override_var("AGENTMAIL_DATA_DIR")? {
+        let data_dir = if let Some(dir) = override_var("AGENT_COMMUNICATION_DATA_DIR")? {
             dir
         } else if let Some(xdg) = abs_var("XDG_DATA_HOME") {
-            xdg.join("agentmail")
+            xdg.join("agent-communication")
         } else if let Some(home) = abs_var("HOME") {
-            home.join(".local").join("share").join("agentmail")
+            home.join(".local")
+                .join("share")
+                .join("agent-communication")
         } else {
-            bail!("cannot locate data directory: set HOME, XDG_DATA_HOME or AGENTMAIL_DATA_DIR");
+            bail!(
+                "cannot locate data directory: set HOME, XDG_DATA_HOME or AGENT_COMMUNICATION_DATA_DIR"
+            );
         };
 
-        let socket = if let Some(sock) = override_var("AGENTMAIL_SOCKET")? {
+        let socket = if let Some(sock) = override_var("AGENT_COMMUNICATION_SOCKET")? {
             sock
         } else if let Some(run) = abs_var("XDG_RUNTIME_DIR") {
             run.join(SOCKET_FILE)
@@ -252,9 +256,9 @@ mod tests {
     fn lock_record_round_trips_and_rejects_anything_else() {
         for supervised in [true, false] {
             for socket in [
-                "/run/user/1000/agentmail.sock",
-                "/tmp/a\nb/agentmail.sock",
-                "/tmp/a\\nb/agentmail.sock",
+                "/run/user/1000/agent-communication.sock",
+                "/tmp/a\nb/agent-communication.sock",
+                "/tmp/a\\nb/agent-communication.sock",
                 "/tmp/\\\n\\/s\n",
             ] {
                 let rec = LockRecord {
@@ -323,16 +327,16 @@ mod tests {
     #[test]
     fn paths_from_env_honours_overrides() {
         let p = Paths::from_vars(vars(&[
-            ("AGENTMAIL_DATA_DIR", "/x"),
-            ("AGENTMAIL_SOCKET", "/y.sock"),
+            ("AGENT_COMMUNICATION_DATA_DIR", "/x"),
+            ("AGENT_COMMUNICATION_SOCKET", "/y.sock"),
             ("XDG_RUNTIME_DIR", "/run/user/1000"),
             ("HOME", "/home/u"),
         ]))
         .unwrap();
         assert_eq!(p.data_dir, PathBuf::from("/x"));
-        assert_eq!(p.db, PathBuf::from("/x/agentmail.redb"));
+        assert_eq!(p.db, PathBuf::from("/x/agent-communication.redb"));
         assert_eq!(p.socket, PathBuf::from("/y.sock"));
-        assert_eq!(p.lock, PathBuf::from("/x/agentmail.lock"));
+        assert_eq!(p.lock, PathBuf::from("/x/agent-communication.lock"));
     }
 
     #[test]
@@ -342,19 +346,31 @@ mod tests {
             ("XDG_RUNTIME_DIR", "/run/user/1000"),
         ]))
         .unwrap();
-        assert_eq!(p.data_dir, PathBuf::from("/data/agentmail"));
-        assert_eq!(p.db, PathBuf::from("/data/agentmail/agentmail.redb"));
-        assert_eq!(p.socket, PathBuf::from("/run/user/1000/agentmail.sock"));
-        assert_eq!(p.lock, PathBuf::from("/data/agentmail/agentmail.lock"));
+        assert_eq!(p.data_dir, PathBuf::from("/data/agent-communication"));
+        assert_eq!(
+            p.db,
+            PathBuf::from("/data/agent-communication/agent-communication.redb")
+        );
+        assert_eq!(
+            p.socket,
+            PathBuf::from("/run/user/1000/agent-communication.sock")
+        );
+        assert_eq!(
+            p.lock,
+            PathBuf::from("/data/agent-communication/agent-communication.lock")
+        );
     }
 
     #[test]
     fn paths_socket_falls_back_to_data_dir_without_runtime_dir() {
         let p = Paths::from_vars(vars(&[("HOME", "/home/u")])).unwrap();
-        assert_eq!(p.data_dir, PathBuf::from("/home/u/.local/share/agentmail"));
+        assert_eq!(
+            p.data_dir,
+            PathBuf::from("/home/u/.local/share/agent-communication")
+        );
         assert_eq!(
             p.socket,
-            PathBuf::from("/home/u/.local/share/agentmail/agentmail.sock")
+            PathBuf::from("/home/u/.local/share/agent-communication/agent-communication.sock")
         );
     }
 
@@ -364,13 +380,16 @@ mod tests {
             ("HOME", "/home/u"),
             ("XDG_DATA_HOME", ""),
             ("XDG_RUNTIME_DIR", ""),
-            ("AGENTMAIL_SOCKET", ""),
+            ("AGENT_COMMUNICATION_SOCKET", ""),
         ]))
         .unwrap();
-        assert_eq!(p.data_dir, PathBuf::from("/home/u/.local/share/agentmail"));
+        assert_eq!(
+            p.data_dir,
+            PathBuf::from("/home/u/.local/share/agent-communication")
+        );
         assert_eq!(
             p.socket,
-            PathBuf::from("/home/u/.local/share/agentmail/agentmail.sock")
+            PathBuf::from("/home/u/.local/share/agent-communication/agent-communication.sock")
         );
     }
 
@@ -379,14 +398,17 @@ mod tests {
         let p = Paths::from_vars(vars(&[("HOME", "/home/u"), ("XDG_RUNTIME_DIR", "rel")])).unwrap();
         assert_eq!(
             p.socket,
-            PathBuf::from("/home/u/.local/share/agentmail/agentmail.sock")
+            PathBuf::from("/home/u/.local/share/agent-communication/agent-communication.sock")
         );
     }
 
     #[test]
     fn paths_relative_xdg_data_home_is_ignored() {
         let p = Paths::from_vars(vars(&[("HOME", "/home/u"), ("XDG_DATA_HOME", "rel")])).unwrap();
-        assert_eq!(p.data_dir, PathBuf::from("/home/u/.local/share/agentmail"));
+        assert_eq!(
+            p.data_dir,
+            PathBuf::from("/home/u/.local/share/agent-communication")
+        );
     }
 
     #[test]
@@ -396,16 +418,28 @@ mod tests {
 
     #[test]
     fn paths_relative_data_dir_override_is_rejected() {
-        let err = Paths::from_vars(vars(&[("HOME", "/home/u"), ("AGENTMAIL_DATA_DIR", "rel")]))
-            .unwrap_err();
-        assert!(err.to_string().contains("AGENTMAIL_DATA_DIR"), "{err}");
+        let err = Paths::from_vars(vars(&[
+            ("HOME", "/home/u"),
+            ("AGENT_COMMUNICATION_DATA_DIR", "rel"),
+        ]))
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("AGENT_COMMUNICATION_DATA_DIR"),
+            "{err}"
+        );
     }
 
     #[test]
     fn paths_relative_socket_override_is_rejected() {
-        let err = Paths::from_vars(vars(&[("HOME", "/home/u"), ("AGENTMAIL_SOCKET", "a.sock")]))
-            .unwrap_err();
-        assert!(err.to_string().contains("AGENTMAIL_SOCKET"), "{err}");
+        let err = Paths::from_vars(vars(&[
+            ("HOME", "/home/u"),
+            ("AGENT_COMMUNICATION_SOCKET", "a.sock"),
+        ]))
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("AGENT_COMMUNICATION_SOCKET"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -415,7 +449,7 @@ mod tests {
         let expected = PathBuf::from(home.clone())
             .join(".local")
             .join("share")
-            .join("agentmail");
+            .join("agent-communication");
         let p = Paths::from_vars(move |k| (k == "HOME").then(|| home.clone())).unwrap();
         assert_eq!(p.data_dir, expected);
     }
@@ -449,9 +483,9 @@ mod tests {
     fn paths_in_dir_puts_everything_in_dir() {
         let p = Paths::in_dir(Path::new("/t"));
         assert_eq!(p.data_dir, PathBuf::from("/t"));
-        assert_eq!(p.db, PathBuf::from("/t/agentmail.redb"));
-        assert_eq!(p.socket, PathBuf::from("/t/agentmail.sock"));
-        assert_eq!(p.lock, PathBuf::from("/t/agentmail.lock"));
-        assert_eq!(p.waiter(), PathBuf::from("/t/agentmail.waiter"));
+        assert_eq!(p.db, PathBuf::from("/t/agent-communication.redb"));
+        assert_eq!(p.socket, PathBuf::from("/t/agent-communication.sock"));
+        assert_eq!(p.lock, PathBuf::from("/t/agent-communication.lock"));
+        assert_eq!(p.waiter(), PathBuf::from("/t/agent-communication.waiter"));
     }
 }

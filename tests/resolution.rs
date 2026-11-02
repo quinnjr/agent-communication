@@ -5,10 +5,10 @@ mod common;
 use std::path::Path;
 use std::process::{Child, Command};
 
-use agentmail::client::Client;
-use agentmail::model::{HUMAN, Harness, Presence, ProcId};
-use agentmail::procinfo;
-use agentmail::protocol::{Caller, ErrorCode, Request};
+use agent_communication::client::Client;
+use agent_communication::model::{HUMAN, Harness, Presence, ProcId};
+use agent_communication::procinfo;
+use agent_communication::protocol::{Caller, ErrorCode, Request};
 use common::{TestDaemon, agent, send_req};
 use serde_json::Value;
 use tempfile::TempDir;
@@ -97,7 +97,7 @@ async fn send(
     c: &mut Client,
     from: &Caller,
     to: &[&str],
-) -> Result<Value, agentmail::client::ClientError> {
+) -> Result<Value, agent_communication::client::ClientError> {
     c.call(from, send_req(to, "hello", "body")).await
 }
 
@@ -135,7 +135,7 @@ async fn unregistered_procs_is_no_identity() {
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::NoIdentity);
         assert!(
-            err.message.contains("agentmail register"),
+            err.message.contains("agent-communication register"),
             "{}",
             err.message
         );

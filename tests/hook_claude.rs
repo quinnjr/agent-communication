@@ -1,9 +1,9 @@
-//! Harness Task 4: `agentmail hook` with Claude Code's events.
+//! Harness Task 4: `agent-communication hook` with Claude Code's events.
 //!
 //! The hooks resolve their agent by process ancestry, like a hook command
 //! Claude Code runs. Each test registers its agent bound to this test
 //! process's parent, which is in the ancestry of `hook::run` (called in
-//! process) and of a spawned `agentmail hook`. Every test has its own
+//! process) and of a spawned `agent-communication hook`. Every test has its own
 //! daemon, so the shared parent never names two agents.
 
 mod common;
@@ -14,11 +14,11 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use agentmail::hook::{self, HookEvent, HookOutput};
-use agentmail::model::{Harness, ProcId};
-use agentmail::paths::Paths;
-use agentmail::procinfo;
-use agentmail::protocol::{Caller, Request};
+use agent_communication::hook::{self, HookEvent, HookOutput};
+use agent_communication::model::{Harness, ProcId};
+use agent_communication::paths::Paths;
+use agent_communication::procinfo;
+use agent_communication::protocol::{Caller, Request};
 use common::{TestDaemon, agent, send_req};
 use serde_json::Value;
 use tempfile::TempDir;
@@ -37,8 +37,14 @@ struct Env(HashMap<String, OsString>);
 impl Env {
     fn of(paths: &Paths) -> Env {
         let mut m = HashMap::new();
-        m.insert("AGENTMAIL_DATA_DIR".into(), paths.data_dir.clone().into());
-        m.insert("AGENTMAIL_SOCKET".into(), paths.socket.clone().into());
+        m.insert(
+            "AGENT_COMMUNICATION_DATA_DIR".into(),
+            paths.data_dir.clone().into(),
+        );
+        m.insert(
+            "AGENT_COMMUNICATION_SOCKET".into(),
+            paths.socket.clone().into(),
+        );
         Env(m)
     }
 
@@ -202,7 +208,7 @@ async fn unregistered_is_silent() {
 async fn human_is_silent() {
     let d = TestDaemon::start().await;
     register_here(&d, "backend", true).await;
-    let env = Env::of(&d.paths).with("AGENTMAIL_HUMAN", "1");
+    let env = Env::of(&d.paths).with("AGENT_COMMUNICATION_HUMAN", "1");
     for (event, payload) in ALL_EVENTS {
         let out = run(&env, event, payload).await;
         assert!(silent(&out), "{event:?}: {out:?}");
@@ -231,7 +237,7 @@ async fn daemon_down_is_silent_and_spawns_nothing() {
 #[tokio::test]
 async fn bad_paths_are_silent() {
     // A relative override cannot be honoured: still no output.
-    let env = Env(HashMap::new()).with("AGENTMAIL_DATA_DIR", "relative/dir");
+    let env = Env(HashMap::new()).with("AGENT_COMMUNICATION_DATA_DIR", "relative/dir");
     let out = run(&env, HookEvent::PostTool, "post-tool").await;
     assert!(silent(&out), "{out:?}");
 }
@@ -400,12 +406,12 @@ async fn post_tool_failure_names_its_event() {
 #[tokio::test]
 async fn address_variable_does_not_name_the_hook_agent() {
     // A hook resolves only by its harness process (or `--session`): an
-    // `AGENTMAIL_ADDRESS` inherited from an outer agent's shell must not
+    // `AGENT_COMMUNICATION_ADDRESS` inherited from an outer agent's shell must not
     // make an inner Claude Code's hooks act as that agent.
     let d = TestDaemon::start().await;
     let outer = common::register(&mut d.client().await, "outer", d.dir.path()).await;
     send(&d, &outer, "STOP", "not yours", true).await;
-    let env = Env::of(&d.paths).with("AGENTMAIL_ADDRESS", &outer);
+    let env = Env::of(&d.paths).with("AGENT_COMMUNICATION_ADDRESS", &outer);
     for (event, payload) in ALL_EVENTS {
         let out = run(&env, event, payload).await;
         assert!(silent(&out), "{event:?}: {out:?}");
@@ -769,11 +775,11 @@ async fn wait_exits_0_when_daemon_stops() {
 
 #[tokio::test]
 async fn wait_respects_the_global_wake_switch() {
-    // `AGENTMAIL_WAKE=0` in the harness's environment: the wait hook never
+    // `AGENT_COMMUNICATION_WAKE=0` in the harness's environment: the wait hook never
     // waits, even for an agent registered with `wake` on and mail there.
     let d = TestDaemon::start().await;
     let a = register_here(&d, "backend", true).await;
-    let env = Env::of(&d.paths).with("AGENTMAIL_WAKE", "0");
+    let env = Env::of(&d.paths).with("AGENT_COMMUNICATION_WAKE", "0");
     send(&d, &a, "schema", "see the PR", false).await;
     let started = Instant::now();
     let out = run(&env, HookEvent::Wait, "stop").await;
@@ -782,7 +788,7 @@ async fn wait_respects_the_global_wake_switch() {
     assert!(silent(&out), "{out:?}");
     assert!(started.elapsed() < Duration::from_secs(1));
     // Any other value leaves waking on.
-    let env = Env::of(&d.paths).with("AGENTMAIL_WAKE", "1");
+    let env = Env::of(&d.paths).with("AGENT_COMMUNICATION_WAKE", "1");
     let out = run(&env, HookEvent::Wait, "stop").await;
     assert_eq!(out.exit, 2, "{out:?}");
 }
@@ -1021,20 +1027,20 @@ async fn hook_latency_under_20ms() {
 
 // Through the binary.
 
-const BIN: &str = env!("CARGO_BIN_EXE_agentmail");
+const BIN: &str = env!("CARGO_BIN_EXE_agent-communication");
 
 fn cli(paths: &Paths, args: &[&str], payload: &str) -> std::process::Output {
     assert_cmd::Command::new(BIN)
         .args(args)
-        .env("AGENTMAIL_DATA_DIR", &paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &paths.socket)
-        .env_remove("AGENTMAIL_ADDRESS")
-        .env_remove("AGENTMAIL_HUMAN")
-        .env_remove("AGENTMAIL_WAKE")
+        .env("AGENT_COMMUNICATION_DATA_DIR", &paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &paths.socket)
+        .env_remove("AGENT_COMMUNICATION_ADDRESS")
+        .env_remove("AGENT_COMMUNICATION_HUMAN")
+        .env_remove("AGENT_COMMUNICATION_WAKE")
         .env_remove("OPENCODE_SESSION_ID")
         .env_remove("KIRO_SESSION_ID")
         .env_remove("CLAUDE_PID")
-        .env_remove("AGENTMAIL_BIN")
+        .env_remove("AGENT_COMMUNICATION_BIN")
         .env("CLAUDE_CODE_ENTRYPOINT", "cli")
         .write_stdin(fixture(payload))
         .timeout(Duration::from_secs(20))
@@ -1130,12 +1136,12 @@ async fn wait_exits_when_its_harness_exits() {
         .arg(r#"read go; "$0" hook stop --harness claude-code < "$1" > /dev/null; "$0" hook wait --harness claude-code < "$1"; exit $?"#)
         .arg(BIN)
         .arg(&payload)
-        .env("AGENTMAIL_DATA_DIR", &d.paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &d.paths.socket)
+        .env("AGENT_COMMUNICATION_DATA_DIR", &d.paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &d.paths.socket)
         .env("CLAUDE_CODE_ENTRYPOINT", "cli")
-        .env_remove("AGENTMAIL_ADDRESS")
-        .env_remove("AGENTMAIL_HUMAN")
-        .env_remove("AGENTMAIL_WAKE")
+        .env_remove("AGENT_COMMUNICATION_ADDRESS")
+        .env_remove("AGENT_COMMUNICATION_HUMAN")
+        .env_remove("AGENT_COMMUNICATION_WAKE")
         .env_remove("CLAUDE_PID")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1208,12 +1214,12 @@ async fn wait_does_not_spin_while_it_waits() {
         .arg(r#"read go; "$0" hook stop --harness claude-code < "$1" > /dev/null 2>&1; "$0" hook wait --harness claude-code < "$1" > /dev/null 2>&1; echo "exit $?"; times"#)
         .arg(BIN)
         .arg(&payload)
-        .env("AGENTMAIL_DATA_DIR", &d.paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &d.paths.socket)
+        .env("AGENT_COMMUNICATION_DATA_DIR", &d.paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &d.paths.socket)
         .env("CLAUDE_CODE_ENTRYPOINT", "cli")
-        .env_remove("AGENTMAIL_ADDRESS")
-        .env_remove("AGENTMAIL_HUMAN")
-        .env_remove("AGENTMAIL_WAKE")
+        .env_remove("AGENT_COMMUNICATION_ADDRESS")
+        .env_remove("AGENT_COMMUNICATION_HUMAN")
+        .env_remove("AGENT_COMMUNICATION_WAKE")
         .env_remove("CLAUDE_PID")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1328,7 +1334,7 @@ fn cli_hook_unknown_event_after_a_global_flag_is_silent() {
 // worker thread to serve it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cli_hook_as_human_is_silent() {
-    // `--as human` is the human, as with AGENTMAIL_HUMAN=1: the hook says
+    // `--as human` is the human, as with AGENT_COMMUNICATION_HUMAN=1: the hook says
     // nothing and uses up no urgent mail.
     let d = TestDaemon::start().await;
     let a = register_here(&d, "backend", true).await;
@@ -1387,12 +1393,12 @@ async fn harness_exit_between_waits_leaves_no_files() {
         .arg(script)
         .arg(BIN)
         .arg(&fixtures)
-        .env("AGENTMAIL_DATA_DIR", &d.paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &d.paths.socket)
+        .env("AGENT_COMMUNICATION_DATA_DIR", &d.paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &d.paths.socket)
         .env("CLAUDE_CODE_ENTRYPOINT", "cli")
-        .env_remove("AGENTMAIL_ADDRESS")
-        .env_remove("AGENTMAIL_HUMAN")
-        .env_remove("AGENTMAIL_WAKE")
+        .env_remove("AGENT_COMMUNICATION_ADDRESS")
+        .env_remove("AGENT_COMMUNICATION_HUMAN")
+        .env_remove("AGENT_COMMUNICATION_WAKE")
         .env_remove("CLAUDE_PID")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

@@ -1,8 +1,8 @@
 #!/bin/sh
-# agentmail installer for Linux and WSL.
+# agent-communication installer for Linux and WSL.
 #
-#   curl -fsSL https://raw.githubusercontent.com/quinnjr/agentmail/main/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/quinnjr/agentmail/main/install.sh | sh -s -- --harness auto
+#   curl -fsSL https://raw.githubusercontent.com/quinnjr/agent-communication/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/quinnjr/agent-communication/main/install.sh | sh -s -- --harness auto
 #
 # Downloads the prebuilt static binary for this machine from the GitHub
 # release, checks its SHA-256, and installs it into ~/.local/bin. Builds the
@@ -11,33 +11,33 @@
 
 set -eu
 
-REPO="quinnjr/agentmail"
+REPO="quinnjr/agent-communication"
 
 usage() {
     cat <<'EOF'
-agentmail installer
+agent-communication installer
 
 Usage: install.sh [options]
   (piped: curl -fsSL .../install.sh | sh -s -- [options])
 
 Options:
   --version <tag>      Release to install, e.g. v0.1.0 (default: latest)
-                       [env AGENTMAIL_VERSION]
+                       [env AGENT_COMMUNICATION_VERSION]
   --bin-dir <dir>      Where to put the binary (default: ~/.local/bin)
-                       [env AGENTMAIL_INSTALL_DIR]
-  --harness <name>     Afterwards run `agentmail install --harness <name>`:
+                       [env AGENT_COMMUNICATION_INSTALL_DIR]
+  --harness <name>     Afterwards run `agent-communication install --harness <name>`:
                        claude-code, opencode or kiro. Repeatable. `auto`
                        picks each harness whose CLI is on PATH.
-  --service            Afterwards run `agentmail install --service` (systemd)
+  --service            Afterwards run `agent-communication install --service` (systemd)
   --from-source        Build with `cargo install` instead of downloading
   -h, --help           Show this help
 
-Mirrors and tests can point downloads elsewhere with AGENTMAIL_DOWNLOAD_URL
-(default: https://github.com/quinnjr/agentmail/releases).
+Mirrors and tests can point downloads elsewhere with AGENT_COMMUNICATION_DOWNLOAD_URL
+(default: https://github.com/quinnjr/agent-communication/releases).
 EOF
 }
 
-say() { printf 'agentmail: %s\n' "$*" >&2; }
+say() { printf 'agent-communication: %s\n' "$*" >&2; }
 die() { say "error: $*"; exit 1; }
 has() { command -v "$1" >/dev/null 2>&1; }
 
@@ -114,10 +114,10 @@ target_triple() {
 check_platform() {
     case "$(uname -s)" in
         Linux) ;;
-        Darwin) die "macOS is not supported yet (agentmail needs Linux or WSL)" ;;
+        Darwin) die "macOS is not supported yet (agent-communication needs Linux or WSL)" ;;
         MINGW* | MSYS* | CYGWIN*)
-            die "on Windows, run install.ps1 or install.cmd: agentmail runs inside WSL" ;;
-        *) die "unsupported OS $(uname -s): agentmail needs Linux or WSL" ;;
+            die "on Windows, run install.ps1 or install.cmd: agent-communication runs inside WSL" ;;
+        *) die "unsupported OS $(uname -s): agent-communication needs Linux or WSL" ;;
     esac
 }
 
@@ -125,7 +125,7 @@ check_platform() {
 # release archive into <tmpdir>/unpacked. Returns 2 when the release has no
 # archive for <triple>; dies on every other failure.
 fetch_prebuilt() {
-    archive="agentmail-$2.tar.gz"
+    archive="agent-communication-$2.tar.gz"
     if [ "$tag" = latest ]; then
         url="$base/latest/download/$archive"
     else
@@ -147,19 +147,19 @@ fetch_prebuilt() {
     [ "$want" = "$got" ] || die "checksum mismatch for $archive (expected $want, got $got)"
     mkdir "$1/unpacked" || die "could not create $1/unpacked"
     tar -xzf "$1/$archive" -C "$1/unpacked" || die "could not unpack $archive"
-    [ -f "$1/unpacked/agentmail" ] || die "$archive has no agentmail binary"
+    [ -f "$1/unpacked/agent-communication" ] || die "$archive has no agent-communication binary"
 }
 
 # build_from_source <tmpdir>: cargo install of the release into
 # <tmpdir>/root. With --from-source and no release published yet, of the
 # default branch.
 build_from_source() {
-    has cargo || die "cargo is not installed, so agentmail cannot be built from source.
+    has cargo || die "cargo is not installed, so agent-communication cannot be built from source.
 Install Rust from https://rustup.rs and run this again, or use a release from
 https://github.com/$REPO/releases"
     if [ "$tag" = latest ]; then
         [ "$release" = none ] || die "could not find the latest release to build; pass --version <tag>"
-        [ "$from_source" = 1 ] || die "no agentmail release has been published yet.
+        [ "$from_source" = 1 ] || die "no agent-communication release has been published yet.
 Run this again with --from-source to build the development branch."
         say "no release published yet; building the development branch"
         set -- "$1" --git "https://github.com/$REPO"
@@ -169,9 +169,9 @@ Run this again with --from-source to build the development branch."
     say "building from source with cargo (this takes a few minutes)"
     root="$1"
     shift
-    cargo install --locked "$@" --root "$root/root" agentmail || die "cargo install failed"
+    cargo install --locked "$@" --root "$root/root" agent-communication || die "cargo install failed"
     mkdir "$root/unpacked" || die "could not create $root/unpacked"
-    cp "$root/root/bin/agentmail" "$root/unpacked/agentmail" || die "cargo installed no agentmail binary"
+    cp "$root/root/bin/agent-communication" "$root/unpacked/agent-communication" || die "cargo installed no agent-communication binary"
 }
 
 # on_path <dir>: whether <dir> is on the user's PATH. Under WSL, also as
@@ -192,8 +192,8 @@ on_path() {
 }
 
 main() {
-    version="${AGENTMAIL_VERSION:-latest}"
-    bin_dir="${AGENTMAIL_INSTALL_DIR:-${HOME:?HOME is not set}/.local/bin}"
+    version="${AGENT_COMMUNICATION_VERSION:-latest}"
+    bin_dir="${AGENT_COMMUNICATION_INSTALL_DIR:-${HOME:?HOME is not set}/.local/bin}"
     harnesses=""
     service=0
     from_source=0
@@ -256,7 +256,7 @@ main() {
     trap 'exit 130' INT
     trap 'exit 143' TERM
 
-    base="${AGENTMAIL_DOWNLOAD_URL:-https://github.com/$REPO/releases}"
+    base="${AGENT_COMMUNICATION_DOWNLOAD_URL:-https://github.com/$REPO/releases}"
     tag="$version"
     release=""
     if [ "$tag" = latest ]; then
@@ -265,7 +265,7 @@ main() {
         release="$(latest_tag "$base")"
         case "$release" in
             none)
-                [ "$from_source" = 1 ] || die "no agentmail release has been published yet.
+                [ "$from_source" = 1 ] || die "no agent-communication release has been published yet.
 Run this again with --from-source to build the development branch." ;;
             "") ;;
             *) tag="$release" ;;
@@ -282,14 +282,14 @@ Run this again with --from-source to build the development branch." ;;
         rc=0
         fetch_prebuilt "$tmp" "$triple" || rc=$?
         if [ "$rc" = 2 ]; then
-            [ "$tag" = latest ] && die "found no agentmail release at $base"
-            die "release $tag has no agentmail-$triple.tar.gz (see https://github.com/$REPO/releases)"
+            [ "$tag" = latest ] && die "found no agent-communication release at $base"
+            die "release $tag has no agent-communication-$triple.tar.gz (see https://github.com/$REPO/releases)"
         fi
     fi
 
-    new="$tmp/unpacked/agentmail"
+    new="$tmp/unpacked/agent-communication"
     mkdir -p "$bin_dir" || die "could not create $bin_dir"
-    bin="$bin_dir/agentmail"
+    bin="$bin_dir/agent-communication"
     # Copy next to the target, check it runs there (the temp dir may be
     # noexec), then rename it over the old one: a running daemon keeps its
     # old binary and nothing ever sees a half-written file.
@@ -297,7 +297,7 @@ Run this again with --from-source to build the development branch." ;;
     chmod 755 "$bin.new"
     installed="$("$bin.new" --version 2>/dev/null)" || {
         rm -f "$bin.new"
-        die "the downloaded agentmail does not run on this machine"
+        die "the downloaded agent-communication does not run on this machine"
     }
     mv -f "$bin.new" "$bin" || die "could not replace $bin"
     say "installed $installed to $bin"
@@ -306,13 +306,13 @@ Run this again with --from-source to build the development branch." ;;
     # older protocol: stop it so the next command starts this one (under
     # systemd, the unit restarts it). Stopping when none runs does nothing.
     if ! "$bin" daemon stop >/dev/null 2>&1; then
-        say "warning: could not stop the running daemon; run \`agentmail daemon stop\`"
+        say "warning: could not stop the running daemon; run \`agent-communication daemon stop\`"
     fi
 
-    other="$(PATH="$user_path" command -v agentmail 2>/dev/null || true)"
+    other="$(PATH="$user_path" command -v agent-communication 2>/dev/null || true)"
     if [ -n "$other" ] && ! [ "$other" -ef "$bin" ]; then
-        say "warning: your PATH finds another agentmail first, at $other"
-        say "remove it (e.g. \`cargo uninstall agentmail\`) or put $bin_dir earlier on PATH"
+        say "warning: your PATH finds another agent-communication first, at $other"
+        say "remove it (e.g. \`cargo uninstall agent-communication\`) or put $bin_dir earlier on PATH"
     fi
 
     set -f
@@ -337,7 +337,7 @@ Run this again with --from-source to build the development branch." ;;
         printf '\n    export PATH="%s:$PATH"\n\n' "$bin_dir" >&2
     fi
     if [ -z "$harnesses" ]; then
-        say "next: wire it into your harness, e.g. \`agentmail install --harness claude-code\`"
+        say "next: wire it into your harness, e.g. \`agent-communication install --harness claude-code\`"
     fi
 }
 

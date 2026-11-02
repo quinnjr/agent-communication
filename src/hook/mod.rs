@@ -1,4 +1,4 @@
-//! `agentmail hook <event> --harness <h>`: turn the daemon's state into what
+//! `agent-communication hook <event> --harness <h>`: turn the daemon's state into what
 //! a harness hook prints, so the agent hears about its mail between steps,
 //! on urgent mail, before it stops, and when idle.
 //!
@@ -12,10 +12,10 @@
 //!
 //! Identity: the harness session given with `--session` (opencode), else
 //! the hook's process ancestry up to its harness process (Claude Code,
-//! kiro). Unlike the CLI, a hook never acts as `AGENTMAIL_ADDRESS`: that
+//! kiro). Unlike the CLI, a hook never acts as `AGENT_COMMUNICATION_ADDRESS`: that
 //! variable is inherited, so a harness started from a registered agent's
 //! shell would otherwise act as the outer agent. A hook run as the human
-//! (`AGENTMAIL_HUMAN=1`, or the CLI's `--as human`) has nothing to say.
+//! (`AGENT_COMMUNICATION_HUMAN=1`, or the CLI's `--as human`) has nothing to say.
 //!
 //! Entry points for the per-harness modules (`claude.rs`, `opencode.rs`,
 //! `kiro.rs`):
@@ -377,7 +377,7 @@ impl Daemon {
     /// The agent's [`HookStatus`], marking its urgent mail surfaced when
     /// `surface_urgent`. `None` for no agent (or a signed-off one), or any
     /// failure. `wake` is off, whatever the agent registered with, when
-    /// waking is off globally (`AGENTMAIL_WAKE=0` in the hook's
+    /// waking is off globally (`AGENT_COMMUNICATION_WAKE=0` in the hook's
     /// environment).
     pub async fn status(&mut self, surface_urgent: bool) -> Option<HookStatus> {
         let call = self
@@ -1027,7 +1027,7 @@ fn waiter_lock(paths: &Paths, address: &str) -> Lock {
 }
 
 /// Who the hook acts as; `None` for the human, who has no hook output.
-/// `AGENTMAIL_ADDRESS` is deliberately not read (see the module docs).
+/// `AGENT_COMMUNICATION_ADDRESS` is deliberately not read (see the module docs).
 fn hook_caller(
     harness: Harness,
     session: Option<&str>,
@@ -1297,9 +1297,9 @@ mod tests {
                     .map(|(_, v)| OsString::from(v))
             }
         };
-        // `AGENTMAIL_ADDRESS` never names the hook's agent: not over
+        // `AGENT_COMMUNICATION_ADDRESS` never names the hook's agent: not over
         // `--session`, and not over the cut ancestry.
-        let addr = env(&[("AGENTMAIL_ADDRESS", "a-1")]);
+        let addr = env(&[("AGENT_COMMUNICATION_ADDRESS", "a-1")]);
         assert_eq!(
             hook_caller(Harness::Opencode, Some("s"), &addr, &procs),
             Some(Caller::Session {
@@ -1315,7 +1315,10 @@ mod tests {
                 procs: procs.clone()
             })
         );
-        let human = env(&[("AGENTMAIL_ADDRESS", "a-1"), ("AGENTMAIL_HUMAN", "1")]);
+        let human = env(&[
+            ("AGENT_COMMUNICATION_ADDRESS", "a-1"),
+            ("AGENT_COMMUNICATION_HUMAN", "1"),
+        ]);
         assert_eq!(
             hook_caller(Harness::Opencode, Some("s"), &human, &procs),
             None

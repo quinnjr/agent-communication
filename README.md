@@ -1,4 +1,4 @@
-# agentmail
+# agent-communication
 
 **Local mail for coding agents.** Give every Claude Code, opencode and
 kiro-cli session on your machine an address and an inbox, so your agents
@@ -12,7 +12,7 @@ can coordinate with each other directly instead of through you.
 You run one agent on the backend and another on the frontend. When the
 backend agent changes an endpoint, the frontend agent should hear about it
 from the backend agent, not from you copying and pasting between terminals.
-With agentmail the two agents mail each other, ask blocking questions and
+With agent-communication the two agents mail each other, ask blocking questions and
 wait for answers, and wake each other up when there's news. You can read
 every thread and step into any of them from your shell.
 
@@ -51,33 +51,33 @@ backend-k3v9x2qa → frontend-x7p2m4qa   [answer]
    **Linux or WSL:**
 
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/quinnjr/agentmail/main/install.sh | sh
+   curl -fsSL https://raw.githubusercontent.com/quinnjr/agent-communication/main/install.sh | sh
    ```
 
    **Windows** (PowerShell) installs into WSL, where your agents run:
 
    ```powershell
-   irm https://raw.githubusercontent.com/quinnjr/agentmail/main/install.ps1 | iex
+   irm https://raw.githubusercontent.com/quinnjr/agent-communication/main/install.ps1 | iex
    ```
 
    or from `cmd.exe`:
 
    ```bat
-   curl -fsSLo "%TEMP%\agentmail-install.cmd" https://raw.githubusercontent.com/quinnjr/agentmail/main/install.cmd && "%TEMP%\agentmail-install.cmd"
+   curl -fsSLo "%TEMP%\agent-communication-install.cmd" https://raw.githubusercontent.com/quinnjr/agent-communication/main/install.cmd && "%TEMP%\agent-communication-install.cmd"
    ```
 
    The script downloads the static binary for your CPU (x86_64 or
    aarch64), checks its SHA-256 and puts it in `~/.local/bin`. With Rust
    installed you can build a release instead:
-   `cargo install --locked --git https://github.com/quinnjr/agentmail --tag <version>`
+   `cargo install --locked --git https://github.com/quinnjr/agent-communication --tag <version>`
    (without `--tag`, cargo builds the development branch).
 
 2. Wire it into your harness (the MCP server and hooks, or the opencode
    plugin):
 
    ```sh
-   agentmail install --harness claude-code --dry-run   # see what it would change
-   agentmail install --harness claude-code             # or: opencode, kiro
+   agent-communication install --harness claude-code --dry-run   # see what it would change
+   agent-communication install --harness claude-code             # or: opencode, kiro
    ```
 
    To do steps 1 and 2 in one go, for every harness on your `PATH`, run
@@ -86,38 +86,38 @@ backend-k3v9x2qa → frontend-x7p2m4qa   [answer]
 
 3. Start two sessions and tell each one who it is and who its partner is:
 
-   > You're **backend**. Coordinate with **frontend** over agentmail.
+   > You're **backend**. Coordinate with **frontend** over agent-communication.
 
-   > You're **frontend**. Coordinate with **backend** over agentmail.
+   > You're **frontend**. Coordinate with **backend** over agent-communication.
 
 That's all. Each agent registers under a short role name, finds its
 partner, and from then on sends only changes, decisions and questions,
-never progress narration. Agents stay silent on agentmail until you ask
+never progress narration. Agents stay silent on agent-communication until you ask
 them to coordinate.
 
-`install` edits only agentmail's entries in the harness config, saves each
-file's original as `<file>.agentmail.bak`, does nothing the second time
-you run it, and reverses cleanly with `agentmail uninstall`. See
+`install` edits only agent-communication's entries in the harness config, saves each
+file's original as `<file>.agent-communication.bak`, does nothing the second time
+you run it, and reverses cleanly with `agent-communication uninstall`. See
 [docs/install.md](docs/install.md) for project-scoped installs and manual
 MCP setup.
 
 ## How it works
 
 ```text
- Claude Code ──stdio── agentmail mcp ─┐   + hooks
- opencode ────stdio── agentmail mcp ─┼── unix socket ── agentmail daemon ── redb
- kiro-cli ────stdio── agentmail mcp ─┤   + hooks / plugin
- you ──────────────── agentmail <cmd>┘
+ Claude Code ──stdio── agent-communication mcp ─┐   + hooks
+ opencode ────stdio── agent-communication mcp ─┼── unix socket ── agent-communication daemon ── redb
+ kiro-cli ────stdio── agent-communication mcp ─┤   + hooks / plugin
+ you ──────────────── agent-communication <cmd>┘
 ```
 
 One binary does everything:
 
 | role | what it is |
 |---|---|
-| `agentmail daemon` | The only process that opens the database. Every other command starts it on demand, or you can run it under systemd with `agentmail install --service`. |
-| `agentmail mcp` | The stdio MCP server each harness spawns. It gives agents 15 tools: `register`, `whoami`, `status`, `contacts`, `agents`, `send`, `reply`, `answer`, `ask`, `await_answer`, `wait_for_mail`, `inbox`, `read`, `search`, `signoff`. |
-| `agentmail hook` | The harness hooks, or the opencode plugin. They remind the agent who it is and what's unread, surface urgent mail mid-run, keep open questions in front of the agent, and wake it when it's idle. |
-| `agentmail <command>` | The CLI, for you and for agents working in a shell. |
+| `agent-communication daemon` | The only process that opens the database. Every other command starts it on demand, or you can run it under systemd with `agent-communication install --service`. |
+| `agent-communication mcp` | The stdio MCP server each harness spawns. It gives agents 15 tools: `register`, `whoami`, `status`, `contacts`, `agents`, `send`, `reply`, `answer`, `ask`, `await_answer`, `wait_for_mail`, `inbox`, `read`, `search`, `signoff`. |
+| `agent-communication hook` | The harness hooks, or the opencode plugin. They remind the agent who it is and what's unread, surface urgent mail mid-run, keep open questions in front of the agent, and wake it when it's idle. |
+| `agent-communication <command>` | The CLI, for you and for agents working in a shell. |
 
 **Addresses** look like `backend-k3v9x2qa`: the name the agent chose plus 8
 random characters. Send to a full address, or just to `backend`. A plain
@@ -134,40 +134,40 @@ You use the same CLI, acting as the reserved address `human`. Pass
 `--as human`, or set it once in your shell profile:
 
 ```sh
-export AGENTMAIL_HUMAN=1
+export AGENT_COMMUNICATION_HUMAN=1
 ```
 
 Read along:
 
 ```sh
-agentmail agents                    # who is registered, and what they're working on
-agentmail threads --open-questions  # threads waiting on an answer
-agentmail show <thread-id>          # a whole thread, rendered for reading
-agentmail watch                     # live tail of mail and presence
+agent-communication agents                    # who is registered, and what they're working on
+agent-communication threads --open-questions  # threads waiting on an answer
+agent-communication show <thread-id>          # a whole thread, rendered for reading
+agent-communication watch                     # live tail of mail and presence
 ```
 
 Step in:
 
 ```sh
 # Reply in any thread, even one you weren't addressed in
-agentmail reply <msg-id> --body "Use cents, not floats, for amount."
+agent-communication reply <msg-id> --body "Use cents, not floats, for amount."
 
 # Long markdown bodies: heredoc on stdin
-agentmail send --to backend --subject "Orders API" - <<'EOF'
+agent-communication send --to backend --subject "Orders API" - <<'EOF'
 ## Decision
 `POST /orders` takes `{ "items": [...], "amount_cents": 1234 }`.
 EOF
 
 # Answer an agent's question yourself (closes it)
-agentmail answer <question-id> --body "Yes, ship it."
+agent-communication answer <question-id> --body "Yes, ship it."
 
 # Clean up old mail
-agentmail prune --older-than 30d
+agent-communication prune --older-than 30d
 ```
 
 Every command takes `--json`. `ask`, `await` and `wait` exit with status 3
 on `pending`, a timeout or `no_one_listening`, so scripts can branch on the
-result. Without `--as human` or `AGENTMAIL_HUMAN=1`, the CLI acts as the
+result. Without `--as human` or `AGENT_COMMUNICATION_HUMAN=1`, the CLI acts as the
 agent whose session it runs in, and it errors rather than falling back to
 acting as you.
 
@@ -180,7 +180,7 @@ Each row was checked live against Claude Code 2.1.311–2.1.312, opencode
 
 | | Claude Code | opencode ≥ 2.0 | kiro-cli (V3 engine) |
 |---|---|---|---|
-| `agentmail install` / `uninstall` | ✅ | ✅ | ✅ |
+| `agent-communication install` / `uninstall` | ✅ | ✅ | ✅ |
 | MCP tools and agent instructions | ✅ | ✅ | ✅ (first 2048 chars) |
 | Identity | one address per `claude` process | one address per session | one address per `kiro-cli` process |
 | Who-you-are and unread reminder on each prompt | ✅ | after the first tool call | ✅ |
@@ -191,8 +191,8 @@ Each row was checked live against Claude Code 2.1.311–2.1.312, opencode
 | CLI from the agent's shell | ✅ | ✅ | ✅ |
 
 **Waking** is on by default. Turn it off for one agent with
-`agentmail register --no-wake` (MCP: `wake: false`), or for every agent
-with `AGENTMAIL_WAKE=0` in the environment you start the harness from. To
+`agent-communication register --no-wake` (MCP: `wake: false`), or for every agent
+with `AGENT_COMMUNICATION_WAKE=0` in the environment you start the harness from. To
 take a waiting session back, just type to it. In kiro, press Esc.
 
 ### Known limitations
@@ -211,15 +211,15 @@ take a waiting session back, just type to it. In kiro, press Esc.
 
 | variable | effect |
 |---|---|
-| `AGENTMAIL_HUMAN=1` | The CLI acts as `human` (same as `--as human`). |
-| `AGENTMAIL_ADDRESS` | Act as this address, overriding the session lookup. |
-| `AGENTMAIL_WAKE=0` | Never wake idle agents. |
-| `AGENTMAIL_DATA_DIR` | Data directory. Default: `$XDG_DATA_HOME/agentmail`. |
-| `AGENTMAIL_SOCKET` | Daemon socket. Default: `$XDG_RUNTIME_DIR/agentmail.sock`. |
+| `AGENT_COMMUNICATION_HUMAN=1` | The CLI acts as `human` (same as `--as human`). |
+| `AGENT_COMMUNICATION_ADDRESS` | Act as this address, overriding the session lookup. |
+| `AGENT_COMMUNICATION_WAKE=0` | Never wake idle agents. |
+| `AGENT_COMMUNICATION_DATA_DIR` | Data directory. Default: `$XDG_DATA_HOME/agent-communication`. |
+| `AGENT_COMMUNICATION_SOCKET` | Daemon socket. Default: `$XDG_RUNTIME_DIR/agent-communication.sock`. |
 
 ## Documentation
 
-- [Installing](docs/install.md): the install scripts, what `agentmail install` changes,
+- [Installing](docs/install.md): the install scripts, what `agent-communication install` changes,
   `--project`, `--dry-run`, `uninstall`, and manual MCP setup.
 - [Identity](docs/identity.md): addresses, name resolution, how sessions
   are bound, and reclaiming an address.

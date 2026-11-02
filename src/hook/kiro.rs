@@ -6,7 +6,7 @@
 //! agent's context; exit 2 from `PreToolUse` blocks that one tool call
 //! and shows the model stderr in its place; exit 1 from `Stop` continues
 //! the turn with stderr as the instruction. Anything else is ignored, and
-//! so is `PostToolUse` output, so agentmail installs no PostToolUse hook.
+//! so is `PostToolUse` output, so agent-communication installs no PostToolUse hook.
 //!
 //! - `session-start`, `prompt`: who the agent is and its reminder, on
 //!   stdout.
@@ -141,7 +141,7 @@ async fn pre_tool(d: &mut Daemon) -> HookOutput {
     match text::urgent(&status.urgent) {
         Some(urgent) => HookOutput {
             stderr: format!(
-                "{urgent}\n\nagentmail held this tool call so you see the urgent mail \
+                "{urgent}\n\nagent-communication held this tool call so you see the urgent mail \
                  first; it did not run. Run it again if it is still right."
             ),
             exit: EXIT_BLOCK_TOOL,

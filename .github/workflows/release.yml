@@ -1,6 +1,6 @@
 # Builds static Linux binaries for a version tag (vX.Y.Z) and publishes them
 # as a GitHub release, in the layout install.sh downloads:
-#   agentmail-<target>.tar.gz and agentmail-<target>.tar.gz.sha256
+#   agent-communication-<target>.tar.gz and agent-communication-<target>.tar.gz.sha256
 # Run it by hand (workflow_dispatch) to build the binaries without releasing.
 name: release
 
@@ -50,16 +50,16 @@ jobs:
 
       - name: Package
         run: |
-          archive="agentmail-${{ matrix.target }}.tar.gz"
+          archive="agent-communication-${{ matrix.target }}.tar.gz"
           mkdir dist pkg
-          cp target/${{ matrix.target }}/release/agentmail README.md LICENSE-MIT LICENSE-APACHE pkg/
-          tar -czf "dist/$archive" -C pkg agentmail README.md LICENSE-MIT LICENSE-APACHE
+          cp target/${{ matrix.target }}/release/agent-communication README.md LICENSE-MIT LICENSE-APACHE pkg/
+          tar -czf "dist/$archive" -C pkg agent-communication README.md LICENSE-MIT LICENSE-APACHE
           (cd dist && sha256sum "$archive" > "$archive.sha256")
-          pkg/agentmail --version
+          pkg/agent-communication --version
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: agentmail-${{ matrix.target }}
+          name: agent-communication-${{ matrix.target }}
           path: dist/*
 
   release:
@@ -90,6 +90,6 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" dist/* \
               --repo "$GITHUB_REPOSITORY" \
-              --title "agentmail $GITHUB_REF_NAME" \
+              --title "agent-communication $GITHUB_REF_NAME" \
               --generate-notes $pre
           fi

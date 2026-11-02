@@ -1,4 +1,4 @@
-//! The `agentmail` command line: the clap command tree, body input,
+//! The `agent-communication` command line: the clap command tree, body input,
 //! dispatch to the daemon, and exit codes.
 //!
 //! Exit codes: 0 success; 1 error; 2 usage error (clap); 3 when `ask`,
@@ -46,13 +46,13 @@ const DEFAULT_TIMEOUT: &str = "240s";
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "agentmail",
+    name = "agent-communication",
     version,
     about = "Mail between coding agents and a human"
 )]
 pub struct Cli {
     /// Act as WHO instead of the registered agent. Only `human` is accepted
-    /// (or set AGENTMAIL_HUMAN=1).
+    /// (or set AGENT_COMMUNICATION_HUMAN=1).
     #[arg(long = "as", global = true, value_name = "WHO", value_parser = [HUMAN])]
     pub as_who: Option<String>,
     /// Print machine-readable JSON instead of human-readable output.
@@ -97,14 +97,14 @@ pub enum Command {
         #[arg(long)]
         fresh: bool,
         /// Do not wake this agent for new mail. The default under kiro-cli,
-        /// unless AGENTMAIL_KIRO_WAKE=1 is set, or agentmail's MCP server
+        /// unless AGENT_COMMUNICATION_KIRO_WAKE=1 is set, or agent-communication's MCP server
         /// that kiro is running has it (what `install --kiro-wake` sets).
-        /// Only when no such server is running does agentmail's entry in
+        /// Only when no such server is running does agent-communication's entry in
         /// the kiro mcp.json that applies here decide.
         #[arg(long, conflicts_with = "wake")]
         no_wake: bool,
         /// Wake this agent for new mail (the default, except under kiro-cli).
-        /// AGENTMAIL_WAKE=0 in the environment turns waking off for every
+        /// AGENT_COMMUNICATION_WAKE=0 in the environment turns waking off for every
         /// agent, this flag included.
         #[arg(long)]
         wake: bool,
@@ -314,9 +314,9 @@ pub enum Command {
         #[arg(long)]
         wake: bool,
     },
-    /// Wire agentmail into a harness: its hooks (opencode: its plugin) and
+    /// Wire agent-communication into a harness: its hooks (opencode: its plugin) and
     /// MCP server. Edits the harness's config files, keeping everything else
-    /// in them; each file's original is saved once as `<file>.agentmail.bak`.
+    /// in them; each file's original is saved once as `<file>.agent-communication.bak`.
     #[command(group(ArgGroup::new("target").required(true).args(["harness", "service"])))]
     Install {
         /// The harness to install into (kiro: the V3 engine only).
@@ -326,7 +326,7 @@ pub enum Command {
         )]
         harness: Option<String>,
         /// Instead of a harness, run the daemon as a systemd user service:
-        /// write `~/.config/systemd/user/agentmail.service` (honouring
+        /// write `~/.config/systemd/user/agent-communication.service` (honouring
         /// XDG_CONFIG_HOME), enable and start the unit, and stop the daemon
         /// started on demand, if one runs.
         #[arg(long, conflicts_with_all = ["project", "kiro_wake"])]
@@ -346,13 +346,13 @@ pub enum Command {
     /// Remove what `install` added to a harness's config files.
     #[command(group(ArgGroup::new("target").required(true).args(["harness", "service"])))]
     Uninstall {
-        /// The harness to remove agentmail from.
+        /// The harness to remove agent-communication from.
         #[arg(
             long,
             value_parser = ["claude-code", "opencode", "kiro"]
         )]
         harness: Option<String>,
-        /// Instead of a harness, stop and disable agentmail's systemd user
+        /// Instead of a harness, stop and disable agent-communication's systemd user
         /// service and remove its unit.
         #[arg(long, conflicts_with = "project")]
         service: bool,
@@ -482,7 +482,7 @@ impl std::fmt::Display for Size {
 
 /// How much of an over-long stdin body is read (and discarded) before
 /// giving up: enough that a writer of a modestly oversized body never sees
-/// a broken pipe, bounded so an endless one (`yes | agentmail send ...`)
+/// a broken pipe, bounded so an endless one (`yes | agent-communication send ...`)
 /// is refused instead of hanging.
 const STDIN_DRAIN_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -608,7 +608,7 @@ fn no_session_cause(
 }
 
 /// Whether `register` should tell the user to act as the new agent through
-/// `AGENTMAIL_ADDRESS`: the agent is bound to no process and no session the
+/// `AGENT_COMMUNICATION_ADDRESS`: the agent is bound to no process and no session the
 /// CLI resolves callers by. Only sessions of a harness that shares its
 /// process (opencode) are used to find the caller; a kiro session is not
 /// (see [`identity::cli_caller`]).
@@ -751,7 +751,7 @@ fn is_hook(args: impl IntoIterator<Item = std::ffi::OsString>) -> bool {
 /// short reads as an empty one.
 const MAX_HOOK_INPUT: u64 = 16 * 1024 * 1024;
 
-/// `agentmail hook`: read the payload (unless stdin is a terminal), run
+/// `agent-communication hook`: read the payload (unless stdin is a terminal), run
 /// the hook and print its output. Never fails: see [`crate::hook`].
 async fn hook(event: HookEvent, harness: &str, args: &crate::hook::HookArgs<'_>) -> ExitCode {
     use std::io::IsTerminal;
@@ -767,7 +767,7 @@ async fn hook(event: HookEvent, harness: &str, args: &crate::hook::HookArgs<'_>)
     // opencode's plugin stops a waiting `hook wait` with SIGTERM when its
     // session gets busy. A wake records its mail (the `woken` file) and
     // then prints it; killed in between, the plugin would never hear of a
-    // wake agentmail recorded. So SIGTERM is caught for the whole command:
+    // wake agent-communication recorded. So SIGTERM is caught for the whole command:
     // while the wait is still waiting it ends the command at once, with
     // nothing recorded or printed, and once the wait has recorded a wake
     // (in the same poll that returns it, with no await in between) the
@@ -829,7 +829,7 @@ struct InstallFlags {
     kiro_wake: bool,
 }
 
-/// `agentmail install` / `uninstall`: plan the changes, then show them
+/// `agent-communication install` / `uninstall`: plan the changes, then show them
 /// (`--dry-run`) or make them. Needs no daemon.
 fn install(harness: &str, flags: InstallFlags, uninstall: bool, json: bool) -> Result<ExitCode> {
     use crate::install::{self as inst, Env, InstallOpts};
@@ -839,7 +839,7 @@ fn install(harness: &str, flags: InstallFlags, uninstall: bool, json: bool) -> R
         kiro_wake,
     } = flags;
     let harness = harness_from(harness)?;
-    let bin = std::env::current_exe().context("locating the agentmail binary")?;
+    let bin = std::env::current_exe().context("locating the agent-communication binary")?;
     let o = InstallOpts {
         harness,
         project,
@@ -863,7 +863,7 @@ fn install(harness: &str, flags: InstallFlags, uninstall: bool, json: bool) -> R
         (Some(_), Some(_)) => "update",
         (Some(_), None) => "delete",
     };
-    // An updated file's original is kept as its backup, unless agentmail
+    // An updated file's original is kept as its backup, unless agent-communication
     // created the file (its marker is still there): it had none.
     // A backup put back is used up: it keeps nothing.
     let original_kept = |c: &inst::Change| {
@@ -949,9 +949,9 @@ fn install(harness: &str, flags: InstallFlags, uninstall: bool, json: bool) -> R
         print_line(&format!("{verb} {}{from}{kept}", c.path.display()))?;
     }
     let summary = match (uninstall, changes.is_empty()) {
-        (false, true) => format!("agentmail is already installed for {name}."),
+        (false, true) => format!("agent-communication is already installed for {name}."),
         (false, false) => {
-            let mut s = format!("agentmail is installed for {name}.");
+            let mut s = format!("agent-communication is installed for {name}.");
             if project && harness == Harness::ClaudeCode {
                 s.push_str(
                     "\nClaude Code asks you to approve the project's MCP servers (.mcp.json) when it next starts.",
@@ -959,8 +959,10 @@ fn install(harness: &str, flags: InstallFlags, uninstall: bool, json: bool) -> R
             }
             s
         }
-        (true, true) => format!("agentmail is not installed for {name}; nothing to remove."),
-        (true, false) => format!("agentmail is removed from {name}."),
+        (true, true) => {
+            format!("agent-communication is not installed for {name}; nothing to remove.")
+        }
+        (true, false) => format!("agent-communication is removed from {name}."),
     };
     print_line(&summary)?;
     if let Some(hint) = restart_hint(harness, uninstall, &changes) {
@@ -972,7 +974,7 @@ fn install(harness: &str, flags: InstallFlags, uninstall: bool, json: bool) -> R
     Ok(ExitCode::SUCCESS)
 }
 
-/// `agentmail install --service` / `uninstall --service`: plan the unit
+/// `agent-communication install --service` / `uninstall --service`: plan the unit
 /// file's change, then show it and the commands to run (`--dry-run`), or
 /// check systemd, make it and run them. Needs no daemon.
 fn install_service(dry_run: bool, uninstall: bool, json: bool) -> Result<ExitCode> {
@@ -1000,7 +1002,7 @@ fn install_service(dry_run: bool, uninstall: bool, json: bool) -> Result<ExitCod
     } else {
         (None, None)
     };
-    // A service running before install on anything but agentmail's unit
+    // A service running before install on anything but agent-communication's unit
     // as it now stands (a unit that was there, one removed by hand, or,
     // after an install that failed before restarting it, the unit before
     // that one) is restarted to run ours: enabling a running service does
@@ -1053,7 +1055,7 @@ fn install_service(dry_run: bool, uninstall: bool, json: bool) -> Result<ExitCod
         ));
     }
     if !uninstall {
-        // A unit of the user's replaced: what it set beyond agentmail's
+        // A unit of the user's replaced: what it set beyond agent-communication's
         // unit is kept only in its backup, and no longer applies.
         for c in changes.iter().filter(|c| c.record_anew) {
             let dropped = service::dropped_settings(c.before.as_deref().unwrap_or(""), &bin);
@@ -1135,7 +1137,7 @@ fn install_service(dry_run: bool, uninstall: bool, json: bool) -> Result<ExitCod
         } else if uninstall {
             service::stop(&env).with_context(|| {
                 format!(
-                    "the unit {shown} is kept; run `agentmail uninstall --service` again to \
+                    "the unit {shown} is kept; run `agent-communication uninstall --service` again to \
                      remove it"
                 )
             })?;
@@ -1161,8 +1163,8 @@ fn install_service(dry_run: bool, uninstall: bool, json: bool) -> Result<ExitCod
             service::start(&env, restart).with_context(|| {
                 format!(
                     "the unit {shown} is written but the service may not be running; run \
-                     `agentmail install --service` again to finish, or \
-                     `agentmail uninstall --service` to undo it"
+                     `agent-communication install --service` again to finish, or \
+                     `agent-communication uninstall --service` to undo it"
                 )
             })?;
             // A client may have started a daemon on demand since the
@@ -1265,14 +1267,16 @@ fn install_service(dry_run: bool, uninstall: bool, json: bool) -> Result<ExitCod
             print_line(&format!("ran {s}"))?;
         }
         print_line(match (uninstall, changes.is_empty(), orphan.is_some()) {
-            (false, _, _) => "the agentmail daemon runs as the systemd user service agentmail.",
-            (true, false, _) => "the agentmail systemd user service is removed.",
+            (false, _, _) => {
+                "the agent-communication daemon runs as the systemd user service agent-communication."
+            }
+            (true, false, _) => "the agent-communication systemd user service is removed.",
             (true, true, true) => {
-                "the agentmail systemd user service's unit was already removed; what systemd \
+                "the agent-communication systemd user service's unit was already removed; what systemd \
                  still had of the service is cleaned up."
             }
             (true, true, false) => {
-                "the agentmail systemd user service is not installed; nothing to remove."
+                "the agent-communication systemd user service is not installed; nothing to remove."
             }
         })?;
     }
@@ -1409,7 +1413,7 @@ async fn run(cli: Cli) -> Result<ExitCode> {
             );
             return Ok(clap_exit(&e));
         }
-        // `--as human` is the human, like `AGENTMAIL_HUMAN=1`: a hook run
+        // `--as human` is the human, like `AGENT_COMMUNICATION_HUMAN=1`: a hook run
         // as the human has nothing to say (`--as` takes no other value),
         // which for opencode's plugin is `{}` / `{"gone":true}`.
         if cli.as_who.is_some() {
@@ -1492,7 +1496,7 @@ async fn run(cli: Cli) -> Result<ExitCode> {
             format!(
                 "register cannot act as {HUMAN}: {HUMAN} is the reserved operator \
                      address and never registers; drop --as {HUMAN} (and unset \
-                     AGENTMAIL_HUMAN) to register an agent"
+                     AGENT_COMMUNICATION_HUMAN) to register an agent"
             ),
         );
         return Ok(clap_exit(&e));
@@ -1530,18 +1534,18 @@ fn render_ask(d: &Value) -> Result<String> {
             let m: Message = parse(&d["message"])?;
             format!(
                 "clarification from {} (question {qid} is still open: reply, then \
-                 `agentmail await {qid}`):\n{}",
+                 `agent-communication await {qid}`):\n{}",
                 render::cell(&m.from),
                 render::message(&m)
             )
         }
         "pending" => format!(
             "pending: no answer to question {qid} yet. Keep waiting with \
-             `agentmail await {qid}`, or carry on and check `agentmail inbox` later.\n"
+             `agent-communication await {qid}`, or carry on and check `agent-communication inbox` later.\n"
         ),
         "no_one_listening" => format!(
             "no one listening: every recipient is gone. Question {qid} is stored; \
-             check later with `agentmail await {qid}`.\n"
+             check later with `agent-communication await {qid}`.\n"
         ),
         other => format!("{other}\n"),
     })
@@ -1665,7 +1669,7 @@ async fn command(s: &mut Session, cmd: Command) -> Result<ExitCode> {
                 }
                 if hint {
                     out.push_str(&format!(
-                        "not bound to a process: set AGENTMAIL_ADDRESS={address} to act as it\n"
+                        "not bound to a process: set AGENT_COMMUNICATION_ADDRESS={address} to act as it\n"
                     ));
                 }
                 Ok(out)
@@ -2041,7 +2045,7 @@ async fn daemon(paths: &Paths, action: DaemonAction, json: bool) -> Result<ExitC
                 Some(ce) if ce.code == ErrorCode::VersionMismatch => {
                     let reason = format!(
                         "it speaks a different protocol (this client speaks \
-                         {PROTOCOL_VERSION}: {}); run `agentmail daemon stop`",
+                         {PROTOCOL_VERSION}: {}); run `agent-communication daemon stop`",
                         ce.message
                     );
                     say(
@@ -2194,7 +2198,7 @@ mod tests {
         // An opencode session resolves the CLI caller by itself.
         assert!(!unbound_hint(None, Some(&key(Harness::Opencode))));
         // A kiro session does not: CLI calls resolve by process, so an agent
-        // with no process is reachable only through AGENTMAIL_ADDRESS.
+        // with no process is reachable only through AGENT_COMMUNICATION_ADDRESS.
         assert!(unbound_hint(None, Some(&key(Harness::Kiro))));
         assert!(!unbound_hint(Some(p), Some(&key(Harness::Kiro))));
     }
@@ -2372,7 +2376,7 @@ mod tests {
         let mut cmd = Cli::command();
         cmd.build();
         let mut missing = Vec::new();
-        check(&cmd, "agentmail", &mut missing);
+        check(&cmd, "agent-communication", &mut missing);
         assert!(missing.is_empty(), "arguments without help: {missing:?}");
     }
 
@@ -2401,12 +2405,12 @@ mod tests {
         let parse = |args: &[&str]| Cli::try_parse_from(args).map(|_| ()).map_err(|e| e.kind());
         use clap::error::ErrorKind;
         assert_eq!(
-            parse(&["agentmail", "send", "--to", "a", "--subject", "s"]),
+            parse(&["agent-communication", "send", "--to", "a", "--subject", "s"]),
             Err(ErrorKind::MissingRequiredArgument)
         );
         assert_eq!(
             parse(&[
-                "agentmail",
+                "agent-communication",
                 "send",
                 "--to",
                 "a",
@@ -2418,9 +2422,9 @@ mod tests {
             ]),
             Err(ErrorKind::ArgumentConflict)
         );
-        assert_eq!(parse(&["agentmail", "reply", "id", "-"]), Ok(()));
+        assert_eq!(parse(&["agent-communication", "reply", "id", "-"]), Ok(()));
         assert_eq!(
-            parse(&["agentmail", "answer", "id", "--body-file", "f"]),
+            parse(&["agent-communication", "answer", "id", "--body-file", "f"]),
             Ok(())
         );
     }
@@ -2428,7 +2432,7 @@ mod tests {
     #[test]
     fn cli_to_splits_commas_and_repeats() {
         let cli = Cli::try_parse_from([
-            "agentmail",
+            "agent-communication",
             "send",
             "--to",
             "a,b",
@@ -2449,7 +2453,7 @@ mod tests {
     #[test]
     fn cli_free_text_may_start_with_a_hyphen() {
         let cli = Cli::try_parse_from([
-            "agentmail",
+            "agent-communication",
             "send",
             "--to",
             "a",
@@ -2469,19 +2473,20 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        let cli = Cli::try_parse_from(["agentmail", "status", "- foo"]).unwrap();
+        let cli = Cli::try_parse_from(["agent-communication", "status", "- foo"]).unwrap();
         match cli.command {
             Command::Status { working_on } => assert_eq!(working_on, "- foo"),
             other => panic!("{other:?}"),
         }
-        let cli = Cli::try_parse_from(["agentmail", "status", "--json", "-- bar"]).unwrap();
+        let cli =
+            Cli::try_parse_from(["agent-communication", "status", "--json", "-- bar"]).unwrap();
         assert!(cli.json);
         match cli.command {
             Command::Status { working_on } => assert_eq!(working_on, "-- bar"),
             other => panic!("{other:?}"),
         }
         let cli = Cli::try_parse_from([
-            "agentmail",
+            "agent-communication",
             "register",
             "x",
             "--role",
@@ -2499,7 +2504,7 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        let cli = Cli::try_parse_from(["agentmail", "search", "-foo", "bar"]).unwrap();
+        let cli = Cli::try_parse_from(["agent-communication", "search", "-foo", "bar"]).unwrap();
         match cli.command {
             Command::Search { query, more } => assert_eq!(
                 (query.as_str(), &more[..]),
@@ -2508,7 +2513,7 @@ mod tests {
             other => panic!("{other:?}"),
         }
         // Known flags after a hyphen-leading value are still flags.
-        let cli = Cli::try_parse_from(["agentmail", "search", "-foo", "--json"]).unwrap();
+        let cli = Cli::try_parse_from(["agent-communication", "search", "-foo", "--json"]).unwrap();
         assert!(cli.json);
         match cli.command {
             Command::Search { query, more } => {
@@ -2517,7 +2522,8 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        let cli = Cli::try_parse_from(["agentmail", "search", "foo", "bar", "--json"]).unwrap();
+        let cli =
+            Cli::try_parse_from(["agent-communication", "search", "foo", "bar", "--json"]).unwrap();
         assert!(cli.json);
         match cli.command {
             Command::Search { query, more } => {
@@ -2526,15 +2532,16 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        assert!(Cli::try_parse_from(["agentmail", "search"]).is_err());
-        let cli = Cli::try_parse_from(["agentmail", "status", "- foo", "--json"]).unwrap();
+        assert!(Cli::try_parse_from(["agent-communication", "search"]).is_err());
+        let cli =
+            Cli::try_parse_from(["agent-communication", "status", "- foo", "--json"]).unwrap();
         assert!(cli.json);
         match cli.command {
             Command::Status { working_on } => assert_eq!(working_on, "- foo"),
             other => panic!("{other:?}"),
         }
         let cli = Cli::try_parse_from([
-            "agentmail",
+            "agent-communication",
             "ask",
             "--to",
             "a",
@@ -2552,8 +2559,16 @@ mod tests {
             other => panic!("{other:?}"),
         }
         // The positional `-` still means stdin.
-        let cli =
-            Cli::try_parse_from(["agentmail", "send", "--to", "a", "--subject", "s", "-"]).unwrap();
+        let cli = Cli::try_parse_from([
+            "agent-communication",
+            "send",
+            "--to",
+            "a",
+            "--subject",
+            "s",
+            "-",
+        ])
+        .unwrap();
         match cli.command {
             Command::Send { body, .. } => assert_eq!(body.stdin.as_deref(), Some("-")),
             other => panic!("{other:?}"),
@@ -2565,7 +2580,7 @@ mod tests {
         use clap::error::ErrorKind;
         for to in ["a,,b", "a,", ",a", "", " ", "a, ,b"] {
             let err = Cli::try_parse_from([
-                "agentmail",
+                "agent-communication",
                 "send",
                 "--to",
                 to,
@@ -2579,7 +2594,7 @@ mod tests {
             assert_eq!(err.exit_code(), 2, "{to:?}");
         }
         let err = Cli::try_parse_from([
-            "agentmail",
+            "agent-communication",
             "ask",
             "--to",
             "a,",
@@ -2594,10 +2609,11 @@ mod tests {
 
     #[test]
     fn cli_global_flags_go_anywhere() {
-        let cli = Cli::try_parse_from(["agentmail", "inbox", "--json", "--as", "human"]).unwrap();
+        let cli = Cli::try_parse_from(["agent-communication", "inbox", "--json", "--as", "human"])
+            .unwrap();
         assert!(cli.json);
         assert_eq!(cli.as_who.as_deref(), Some("human"));
-        assert!(Cli::try_parse_from(["agentmail", "--as", "bob", "inbox"]).is_err());
+        assert!(Cli::try_parse_from(["agent-communication", "--as", "bob", "inbox"]).is_err());
     }
 
     #[test]

@@ -8,9 +8,9 @@ use crate::procinfo;
 use crate::protocol::Caller;
 
 /// Names an agent address to act as, overriding the process binding.
-pub const ENV_ADDRESS: &str = "AGENTMAIL_ADDRESS";
+pub const ENV_ADDRESS: &str = "AGENT_COMMUNICATION_ADDRESS";
 /// Set to `1` to act as the human.
-pub const ENV_HUMAN: &str = "AGENTMAIL_HUMAN";
+pub const ENV_HUMAN: &str = "AGENT_COMMUNICATION_HUMAN";
 /// The opencode session id, set in the shell commands opencode runs.
 pub const ENV_OPENCODE_SESSION: &str = "OPENCODE_SESSION_ID";
 /// The kiro-cli root conversation id, set for kiro's shell tool commands
@@ -18,16 +18,16 @@ pub const ENV_OPENCODE_SESSION: &str = "OPENCODE_SESSION_ID";
 pub const ENV_KIRO_SESSION: &str = "KIRO_SESSION_ID";
 /// `1` turns waking on by default for kiro-cli agents; `install
 /// --kiro-wake` sets it on the MCP server. kiro does not pass it on to its
-/// shell tool's commands, so the CLI reads it from the agentmail MCP
+/// shell tool's commands, so the CLI reads it from the agent-communication MCP
 /// server that kiro itself started (`kiro_servers_wake`), and falls back
 /// to the installed mcp.json only when no such server is running.
-pub const ENV_KIRO_WAKE: &str = "AGENTMAIL_KIRO_WAKE";
+pub const ENV_KIRO_WAKE: &str = "AGENT_COMMUNICATION_KIRO_WAKE";
 /// `0` turns waking off for every agent and every harness: the global
 /// switch. Set in the environment a harness runs in (its hooks, MCP server
 /// and shell commands inherit it): agents register with `wake` off, an
 /// explicit `--wake` / `wake: true` included, and the hooks never wait for
 /// mail, whatever an agent registered with ([`wake_disabled`]).
-pub const ENV_WAKE: &str = "AGENTMAIL_WAKE";
+pub const ENV_WAKE: &str = "AGENT_COMMUNICATION_WAKE";
 
 /// Whether `env` turns waking off globally: [`ENV_WAKE`]`=0`.
 pub fn wake_disabled(env: impl Fn(&str) -> Option<OsString>) -> bool {
@@ -169,8 +169,8 @@ fn session_in(
 ///
 /// 1. `--as human` (`as_human`): [`Caller::Human`]. An explicit flag wins
 ///    over the environment.
-/// 2. `AGENTMAIL_ADDRESS` set and non-empty: [`Caller::Address`].
-/// 3. `AGENTMAIL_HUMAN=1`: [`Caller::Human`].
+/// 2. `AGENT_COMMUNICATION_ADDRESS` set and non-empty: [`Caller::Address`].
+/// 3. `AGENT_COMMUNICATION_HUMAN=1`: [`Caller::Human`].
 /// 4. A session from the environment ([`session_for`] the nearest harness
 ///    ancestor) of a harness that runs several sessions in one process
 ///    (opencode): [`Caller::Session`]. Shell commands of different opencode
@@ -242,10 +242,10 @@ fn caller_from(
 ///    from a Claude Code shell must bind itself, not the Claude Code it
 ///    happens to run under, or it would take over the binding of the agent
 ///    Claude Code itself registered. The cost: a Claude Code MCP server
-///    started through a wrapper that does not exec (`sh -c 'agentmail
+///    started through a wrapper that does not exec (`sh -c 'agent-communication
 ///    mcp'`) binds the wrapper, so CLI calls and hooks from Claude Code's
 ///    shell (which find the agent through Claude Code's process) do not
-///    find it. Claude Code configs should run `agentmail mcp` directly, or
+///    find it. Claude Code configs should run `agent-communication mcp` directly, or
 ///    `exec` it from a wrapper.
 /// 2. Any other `explicit_pid` (`register --pid`, or a parent that is a
 ///    harness, has no kiro or opencode above it, or sits above it): exactly
@@ -409,7 +409,7 @@ fn binding_with(
 /// kiro, yes when that variable is `1` or when `kiro_wake_installed` says
 /// so; it is asked only then. For the CLI, which kiro does not give the
 /// variable, that is [`default_wake_here`]'s check: the variable in the
-/// environment of the agentmail MCP server kiro itself started
+/// environment of the agent-communication MCP server kiro itself started
 /// (`kiro_servers_wake`), or, only when no such server is running, the
 /// installed mcp.json. Never with [`ENV_WAKE`]`=0` ([`wake_disabled`]).
 pub fn default_wake(
@@ -436,7 +436,7 @@ pub fn register_wake(
     !wake_disabled(env) && asked.unwrap_or_else(default)
 }
 
-/// [`default_wake`] for agentmail's MCP server: its own environment only.
+/// [`default_wake`] for agent-communication's MCP server: its own environment only.
 /// The server is the process kiro started with the `env` it settled on
 /// (workspace trust and the merge of the workspace's and the user's
 /// servers included), so without [`ENV_KIRO_WAKE`]`=1` there `--kiro-wake`
@@ -449,7 +449,7 @@ pub fn default_wake_for_server(harness: Harness) -> bool {
 
 /// [`default_wake`] for this process: its environment, then what kiro
 /// itself runs. kiro does not give its shell tool's commands the MCP
-/// server's `env`, so the CLI asks the source of truth: agentmail's MCP
+/// server's `env`, so the CLI asks the source of truth: agent-communication's MCP
 /// server running under the same `kiro-cli` (`kiro_servers_wake`),
 /// which kiro started with the `env` it settled on (workspace trust and
 /// the order it merges the workspace's and the user's servers included).
@@ -458,7 +458,7 @@ pub fn default_wake_for_server(harness: Harness) -> bool {
 /// config for kiro's workspace and the home. kiro's workspace is the
 /// working directory of the `kiro-cli` process this one runs under, not
 /// this process's own: a shell command often runs in a subdirectory
-/// (`cd crates/x && agentmail register ...`). Without a `kiro-cli` above,
+/// (`cd crates/x && agent-communication register ...`). Without a `kiro-cli` above,
 /// or when its directory cannot be read, this process's working
 /// directory stands in.
 pub fn default_wake_here(harness: Harness) -> bool {
@@ -487,7 +487,7 @@ fn kiro_ancestor(pid: u32) -> Option<ProcId> {
         .map(|(p, _)| p)
 }
 
-/// What agentmail's MCP servers that `kiro` (a `kiro-cli` pid) itself
+/// What agent-communication's MCP servers that `kiro` (a `kiro-cli` pid) itself
 /// started say: whether one was started with [`ENV_KIRO_WAKE`]`=1`, or
 /// `None` when none runs there (see [`servers_wake`]). Servers below
 /// `kiro` that are not its own ([`is_kiro_own_server`]) do not count.
@@ -496,14 +496,16 @@ fn kiro_servers_wake(kiro: u32) -> Option<bool> {
     let own_name = std::env::current_exe()
         .ok()
         .and_then(|p| p.file_name().map(|n| n.to_os_string()));
-    let names: Vec<&std::ffi::OsStr> = std::iter::once(std::ffi::OsStr::new("agentmail"))
+    let names: Vec<&std::ffi::OsStr> = std::iter::once(std::ffi::OsStr::new("agent-communication"))
         .chain(own_name.as_deref())
         .collect();
     servers_wake(
         procinfo::descendants(kiro)
             .into_iter()
             .filter(|&pid| pid != me)
-            .filter(|&pid| procinfo::args(pid).is_some_and(|a| is_agentmail_mcp(&a, &names)))
+            .filter(|&pid| {
+                procinfo::args(pid).is_some_and(|a| is_agent_communication_mcp(&a, &names))
+            })
             .filter(|&pid| {
                 is_kiro_own_server(
                     pid,
@@ -558,9 +560,9 @@ fn is_kiro_own_server(
 }
 
 /// Whether a process started with `args` (the program first) is
-/// agentmail's MCP server: `<program> mcp`, the program named one of
-/// `names` (agentmail's names: `agentmail`, and this binary's own).
-fn is_agentmail_mcp(args: &[OsString], names: &[&std::ffi::OsStr]) -> bool {
+/// agent-communication's MCP server: `<program> mcp`, the program named one of
+/// `names` (agent-communication's names: `agent-communication`, and this binary's own).
+fn is_agent_communication_mcp(args: &[OsString], names: &[&std::ffi::OsStr]) -> bool {
     let [program, sub, ..] = args else {
         return false;
     };
@@ -570,7 +572,7 @@ fn is_agentmail_mcp(args: &[OsString], names: &[&std::ffi::OsStr]) -> bool {
             .is_some_and(|n| names.contains(&n))
 }
 
-/// The wake default that agentmail MCP servers, given each one's
+/// The wake default that agent-communication MCP servers, given each one's
 /// [`ENV_KIRO_WAKE`] value, set: `Some(true)` when one has `1`,
 /// `Some(false)` when none has, `None` when there are no servers.
 fn servers_wake(values: impl IntoIterator<Item = Option<OsString>>) -> Option<bool> {
@@ -651,22 +653,22 @@ mod tests {
             (11, (10, "kiro-cli-chat", None)),
             (12, (11, "node", None)),
             // kiro's own engine-started server.
-            (13, (12, "agentmail", None)),
+            (13, (12, "agent-communication", None)),
             // kiro's shell, and a foreign MCP client run from it.
             (20, (12, "bash", Some("outer"))),
             (21, (20, "codex", Some("outer"))),
-            (22, (21, "agentmail", None)),
+            (22, (21, "agent-communication", None)),
             // A client that cleans its server's environment and whose own
             // environment carries no session either, but whose shell does.
             (23, (20, "inspector", None)),
-            (24, (23, "agentmail", None)),
+            (24, (23, "agent-communication", None)),
             // A nested kiro-cli run from kiro's shell, and its engine's server.
             (30, (20, "kiro-cli", Some("outer"))),
             (31, (30, "kiro-cli-chat", Some("outer"))),
             (32, (31, "node", Some("outer"))),
-            (33, (32, "agentmail", Some("outer"))),
+            (33, (32, "agent-communication", Some("outer"))),
             // A process whose parent exited (chain broken).
-            (40, (99, "agentmail", None)),
+            (40, (99, "agent-communication", None)),
         ]);
         let parent = |p: u32| table.get(&p).map(|e| e.0);
         let comm = |p: u32| table.get(&p).map(|e| e.1.to_string());
@@ -688,31 +690,37 @@ mod tests {
     }
 
     #[test]
-    fn is_agentmail_mcp_matches_the_server_command_only() {
+    fn is_agent_communication_mcp_matches_the_server_command_only() {
         let names = [
-            std::ffi::OsStr::new("agentmail"),
+            std::ffi::OsStr::new("agent-communication"),
             std::ffi::OsStr::new("am-dev"),
         ];
         let args = |a: &[&str]| a.iter().map(OsString::from).collect::<Vec<_>>();
-        assert!(is_agentmail_mcp(
-            &args(&["/usr/bin/agentmail", "mcp"]),
+        assert!(is_agent_communication_mcp(
+            &args(&["/usr/bin/agent-communication", "mcp"]),
             &names
         ));
-        assert!(is_agentmail_mcp(&args(&["agentmail", "mcp"]), &names));
-        assert!(is_agentmail_mcp(
+        assert!(is_agent_communication_mcp(
+            &args(&["agent-communication", "mcp"]),
+            &names
+        ));
+        assert!(is_agent_communication_mcp(
             &args(&["/x/target/am-dev", "mcp"]),
             &names
         ));
-        assert!(!is_agentmail_mcp(
-            &args(&["/usr/bin/agentmail", "register"]),
+        assert!(!is_agent_communication_mcp(
+            &args(&["/usr/bin/agent-communication", "register"]),
             &names
         ));
-        assert!(!is_agentmail_mcp(&args(&["/usr/bin/agentmail"]), &names));
-        assert!(!is_agentmail_mcp(
+        assert!(!is_agent_communication_mcp(
+            &args(&["/usr/bin/agent-communication"]),
+            &names
+        ));
+        assert!(!is_agent_communication_mcp(
             &args(&["/usr/bin/other-mcp", "mcp"]),
             &names
         ));
-        assert!(!is_agentmail_mcp(&args(&[]), &names));
+        assert!(!is_agent_communication_mcp(&args(&[]), &names));
     }
 
     #[test]
@@ -765,7 +773,7 @@ mod tests {
                 address: "x".into()
             }
         );
-        // It beats AGENTMAIL_HUMAN, but not an explicit --as human.
+        // It beats AGENT_COMMUNICATION_HUMAN, but not an explicit --as human.
         let both = env(&[(ENV_ADDRESS, "x"), (ENV_HUMAN, "1")]);
         assert_eq!(
             caller_from(false, &both, me, none, no_environ),
@@ -1287,7 +1295,7 @@ mod tests {
         // (the sleep). The server binds the client's process, not kiro-cli,
         // so it cannot take over the agent kiro's own server registered.
         let me = procinfo::proc_id(std::process::id()).unwrap();
-        let value = format!("agentmail-test-{}", me.pid);
+        let value = format!("agent-communication-test-{}", me.pid);
         for (harness, var) in [
             (Harness::Kiro, ENV_KIRO_SESSION),
             (Harness::Opencode, ENV_OPENCODE_SESSION),
@@ -1379,9 +1387,9 @@ mod tests {
 
     #[test]
     fn identity_cli_session_register_under_pid_1_opencode_is_unbound() {
-        // `agentmail register` from an opencode session whose opencode is
+        // `agent-communication register` from an opencode session whose opencode is
         // PID 1, run through intermediate processes (opencode -> ... -> sh
-        // -> agentmail): the session agent carries no process, as over MCP
+        // -> agent-communication): the session agent carries no process, as over MCP
         // (whose parent, opencode at PID 1, cannot be bound), instead of
         // being bound to a transient process in between. The harness is
         // still opencode, so its process counts as shared.

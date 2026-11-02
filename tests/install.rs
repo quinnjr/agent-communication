@@ -1,4 +1,4 @@
-//! Harness Tasks 5, 7, 8 and 9: `agentmail install` / `uninstall` for Claude Code
+//! Harness Tasks 5, 7, 8 and 9: `agent-communication install` / `uninstall` for Claude Code
 //! opencode, kiro, and the systemd user service.
 //!
 //! Each test works in its own temporary home and working directory and
@@ -9,13 +9,13 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use agentmail::install::{self, Change, Env, InstallOpts};
-use agentmail::model::Harness;
+use agent_communication::install::{self, Change, Env, InstallOpts};
+use agent_communication::model::Harness;
 use assert_cmd::Command;
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
-const BIN: &str = "/opt/agentmail/bin/agentmail";
+const BIN: &str = "/opt/agent-communication/bin/agent-communication";
 
 /// A temporary home and a project directory inside it.
 struct Home {
@@ -95,13 +95,13 @@ fn write(p: &Path, text: &str) {
 
 fn bak(p: &Path) -> PathBuf {
     let mut s = p.as_os_str().to_owned();
-    s.push(".agentmail.bak");
+    s.push(".agent-communication.bak");
     PathBuf::from(s)
 }
 
 fn marker(p: &Path) -> PathBuf {
     let mut s = p.as_os_str().to_owned();
-    s.push(".agentmail.created");
+    s.push(".agent-communication.created");
     PathBuf::from(s)
 }
 
@@ -109,7 +109,7 @@ fn hook(bin: &str, event: &str) -> Value {
     json!({"type": "command", "command": format!("{bin} hook {event} --harness claude-code"), "timeout": 10})
 }
 
-/// The `hooks` object agentmail installs, for `bin` (already shell-quoted).
+/// The `hooks` object agent-communication installs, for `bin` (already shell-quoted).
 fn expected_hooks(bin: &str) -> Value {
     json!({
         "SessionStart": [{"hooks": [hook(bin, "session-start")]}],
@@ -128,8 +128,8 @@ fn expected_server(bin: &str) -> Value {
 }
 
 /// A user settings file as Claude Code writes it, with someone else's
-/// PostToolUse hook, a hook on an event agentmail does not use, and keys
-/// agentmail does not touch (one a number whose spelling serde would change).
+/// PostToolUse hook, a hook on an event agent-communication does not use, and keys
+/// agent-communication does not touch (one a number whose spelling serde would change).
 const FOREIGN_SETTINGS: &str = r#"{
   "model": "opus",
   "permissions": {
@@ -200,7 +200,7 @@ fn claude_install_into_empty() {
     let mcp = read_json(&h.user_mcp());
     assert_eq!(
         mcp,
-        json!({"mcpServers": {"agentmail": expected_server(BIN)}})
+        json!({"mcpServers": {"agent-communication": expected_server(BIN)}})
     );
 
     // 2-space indent, our key order, trailing newline.
@@ -273,7 +273,10 @@ fn claude_install_preserves_foreign_hooks_and_keys() {
         mcp["mcpServers"]["github"],
         orig_mcp["mcpServers"]["github"]
     );
-    assert_eq!(mcp["mcpServers"]["agentmail"], expected_server(BIN));
+    assert_eq!(
+        mcp["mcpServers"]["agent-communication"],
+        expected_server(BIN)
+    );
     assert_eq!(mcp["projects"], orig_mcp["projects"]);
     assert_eq!(mcp["numStartups"], 12);
     assert_eq!(mcp["userID"], "abc");
@@ -315,8 +318,8 @@ fn claude_uninstall_keeps_empty_containers_that_were_there() {
 
 #[test]
 fn claude_reinstall_after_uninstall_records_the_file_anew() {
-    // The record of the file before agentmail is taken again by an install
-    // into a file without agentmail's entries: containers the user added
+    // The record of the file before agent-communication is taken again by an install
+    // into a file without agent-communication's entries: containers the user added
     // since the first install stay, empty, through the next uninstall.
     let h = Home::new();
     let env = h.env(&[]);
@@ -342,10 +345,10 @@ fn claude_reinstall_after_uninstall_records_the_file_anew() {
 }
 
 #[test]
-fn claude_file_agentmail_created_then_kept_is_the_users_after_reinstall() {
-    // Agentmail created the files; the user added keys of their own, so an
-    // uninstall kept them. Once agentmail's entries are gone, the next
-    // install sees files the user had, not files agentmail created.
+fn claude_file_agent_communication_created_then_kept_is_the_users_after_reinstall() {
+    // agent-communication created the files; the user added keys of their own, so an
+    // uninstall kept them. Once agent-communication's entries are gone, the next
+    // install sees files the user had, not files agent-communication created.
     let h = Home::new();
     let env = h.env(&[]);
     install(&opts(false, BIN), &env);
@@ -377,7 +380,7 @@ fn claude_file_agentmail_created_then_kept_is_the_users_after_reinstall() {
 #[test]
 fn claude_install_after_file_removed_forgets_its_old_backup() {
     // A backup left from a file the user has since deleted does not make
-    // the file agentmail now creates count as theirs.
+    // the file agent-communication now creates count as theirs.
     let h = Home::new();
     let env = h.env(&[]);
     write(&h.settings(), "{\"model\":\"opus\"}");
@@ -413,12 +416,12 @@ fn claude_uninstall_keeps_files_that_were_empty_objects() {
 }
 
 #[test]
-fn claude_files_agentmail_created_go_even_after_reinstall() {
-    // A reinstall keeps no backup of the file agentmail itself created (it
-    // had no original); uninstall still sees that agentmail created it.
+fn claude_files_agent_communication_created_go_even_after_reinstall() {
+    // A reinstall keeps no backup of the file agent-communication itself created (it
+    // had no original); uninstall still sees that agent-communication created it.
     let h = Home::new();
     let env = h.env(&[]);
-    install(&opts(false, "/old/agentmail"), &env);
+    install(&opts(false, "/old/agent-communication"), &env);
     install(&opts(false, BIN), &env);
     assert!(!bak(&h.settings()).exists());
     assert!(!bak(&h.user_mcp()).exists());
@@ -435,12 +438,12 @@ fn claude_files_agentmail_created_go_even_after_reinstall() {
 }
 
 #[test]
-fn claude_pre_existing_file_with_only_agentmail_survives_uninstall() {
+fn claude_pre_existing_file_with_only_agent_communication_survives_uninstall() {
     // Added by hand (say with `claude mcp add`), with the user's own `env`.
     let h = Home::new();
     let env = h.env(&[]);
-    let mine = json!({"mcpServers": {"agentmail": {
-        "type": "stdio", "command": "/old/agentmail", "args": ["mcp"], "env": {"AGENTMAIL_X": "1"}
+    let mine = json!({"mcpServers": {"agent-communication": {
+        "type": "stdio", "command": "/old/agent-communication", "args": ["mcp"], "env": {"AGENT_COMMUNICATION_X": "1"}
     }}});
     let text = format!("{}\n", serde_json::to_string_pretty(&mine).unwrap());
     write(&h.user_mcp(), &text);
@@ -451,7 +454,7 @@ fn claude_pre_existing_file_with_only_agentmail_survives_uninstall() {
     assert_eq!(read_json(&h.user_mcp()), json!({}));
     assert_eq!(read(&bak(&h.user_mcp())), text);
 
-    // Without a backup (agentmail never changed it) the same holds.
+    // Without a backup (agent-communication never changed it) the same holds.
     let h = Home::new();
     write(&h.user_mcp(), &text);
     uninstall(&opts(false, BIN), &h.env(&[]));
@@ -462,10 +465,10 @@ fn claude_pre_existing_file_with_only_agentmail_survives_uninstall() {
 fn claude_install_keeps_fields_the_user_added() {
     let h = Home::new();
     let env = h.env(&[]);
-    install(&opts(false, "/old/agentmail"), &env);
+    install(&opts(false, "/old/agent-communication"), &env);
     let mut v = read_json(&h.user_mcp());
-    v["mcpServers"]["agentmail"]["env"] = json!({"AGENTMAIL_X": "1"});
-    v["mcpServers"]["agentmail"]["timeout"] = json!(5000);
+    v["mcpServers"]["agent-communication"]["env"] = json!({"AGENT_COMMUNICATION_X": "1"});
+    v["mcpServers"]["agent-communication"]["timeout"] = json!(5000);
     write(&h.user_mcp(), &serde_json::to_string_pretty(&v).unwrap());
     let mut s = read_json(&h.settings());
     s["hooks"]["Stop"][0]["hooks"][1]["statusMessage"] = json!("waiting for mail");
@@ -473,10 +476,10 @@ fn claude_install_keeps_fields_the_user_added() {
     write(&h.settings(), &serde_json::to_string_pretty(&s).unwrap());
 
     install(&opts(false, BIN), &env);
-    let server = &read_json(&h.user_mcp())["mcpServers"]["agentmail"];
+    let server = &read_json(&h.user_mcp())["mcpServers"]["agent-communication"];
     assert_eq!(
         *server,
-        json!({"type": "stdio", "command": BIN, "args": ["mcp"], "env": {"AGENTMAIL_X": "1"}, "timeout": 5000})
+        json!({"type": "stdio", "command": BIN, "args": ["mcp"], "env": {"AGENT_COMMUNICATION_X": "1"}, "timeout": 5000})
     );
     let mut want = expected_hooks(BIN);
     want["Stop"][0]["hooks"][1]["statusMessage"] = json!("waiting for mail");
@@ -523,7 +526,7 @@ fn claude_crlf_file_round_trips() {
 }
 
 #[test]
-fn claude_binary_not_named_agentmail_is_still_recognised() {
+fn claude_binary_not_named_agent_communication_is_still_recognised() {
     let h = Home::new();
     let env = h.env(&[]);
     write(&h.settings(), FOREIGN_SETTINGS);
@@ -581,10 +584,10 @@ fn claude_install_idempotent() {
 fn claude_reinstall_replaces_old_entries() {
     let h = Home::new();
     let env = h.env(&[]);
-    install(&opts(false, "/old/agentmail"), &env);
-    // An entry from an older agentmail on an event this one no longer uses.
+    install(&opts(false, "/old/agent-communication"), &env);
+    // An entry from an older agent-communication on an event this one no longer uses.
     let mut v = read_json(&h.settings());
-    v["hooks"]["PreToolUse"] = json!([{"hooks": [hook("/old/agentmail", "pre-tool")]}]);
+    v["hooks"]["PreToolUse"] = json!([{"hooks": [hook("/old/agent-communication", "pre-tool")]}]);
     write(&h.settings(), &serde_json::to_string_pretty(&v).unwrap());
 
     install(&opts(false, BIN), &env);
@@ -594,7 +597,7 @@ fn claude_reinstall_replaces_old_entries() {
     );
     assert_eq!(
         read_json(&h.user_mcp()),
-        json!({"mcpServers": {"agentmail": expected_server(BIN)}})
+        json!({"mcpServers": {"agent-communication": expected_server(BIN)}})
     );
 }
 
@@ -602,12 +605,12 @@ fn claude_reinstall_replaces_old_entries() {
 fn claude_bin_with_space_is_quoted() {
     let h = Home::new();
     let env = h.env(&[]);
-    let bin = "/opt/my tools/it's/agentmail";
+    let bin = "/opt/my tools/it's/agent-communication";
     install(&opts(false, bin), &env);
-    let quoted = r#"'/opt/my tools/it'\''s/agentmail'"#;
+    let quoted = r#"'/opt/my tools/it'\''s/agent-communication'"#;
     assert_eq!(read_json(&h.settings())["hooks"], expected_hooks(quoted));
     assert_eq!(
-        read_json(&h.user_mcp())["mcpServers"]["agentmail"],
+        read_json(&h.user_mcp())["mcpServers"]["agent-communication"],
         expected_server(bin)
     );
     // Quoted commands are still recognised as ours.
@@ -646,7 +649,7 @@ fn claude_uninstall_restores_equivalent() {
             .is_empty()
     );
 
-    // Files agentmail created are removed again.
+    // Files agent-communication created are removed again.
     let h = Home::new();
     let env = h.env(&[]);
     install(&opts(false, BIN), &env);
@@ -689,12 +692,12 @@ fn claude_respects_config_dir() {
     );
     assert_eq!(
         read_json(&cfg.join(".claude.json")),
-        json!({"mcpServers": {"agentmail": expected_server(BIN)}})
+        json!({"mcpServers": {"agent-communication": expected_server(BIN)}})
     );
     assert!(!h.settings().exists());
     assert!(!h.user_mcp().exists());
     assert!(!h.home().join(".claude").exists());
-    // The directory agentmail created goes again on uninstall.
+    // The directory agent-communication created goes again on uninstall.
     uninstall(&opts(false, BIN), &env);
     assert!(!cfg.exists());
 }
@@ -710,7 +713,7 @@ fn claude_project_scope() {
     );
     assert_eq!(
         read_json(&h.proj().join(".mcp.json")),
-        json!({"mcpServers": {"agentmail": expected_server(BIN)}})
+        json!({"mcpServers": {"agent-communication": expected_server(BIN)}})
     );
     assert!(!h.settings().exists());
     assert!(!h.user_mcp().exists());
@@ -741,7 +744,7 @@ fn backup_written_once() {
     assert_eq!(read(&bak(&h.settings())), FOREIGN_SETTINGS);
     assert_eq!(read(&bak(&h.user_mcp())), FOREIGN_USER_MCP);
     // A second change (a new binary path) keeps the first backup.
-    let changes = install(&opts(false, "/elsewhere/agentmail"), &env);
+    let changes = install(&opts(false, "/elsewhere/agent-communication"), &env);
     assert_eq!(changes.len(), 2);
     assert_eq!(read(&bak(&h.settings())), FOREIGN_SETTINGS);
     uninstall(&opts(false, BIN), &env);
@@ -780,7 +783,7 @@ fn unparsable_config_on_uninstall_says_remove_not_add() {
         let err = install::plan_uninstall(&opts(false, BIN), &h.env(&[])).unwrap_err();
         let msg = format!("{err:#}");
         assert!(msg.contains(&path.display().to_string()), "{msg}");
-        assert!(msg.contains("remove agentmail's entry"), "{msg}");
+        assert!(msg.contains("remove agent-communication's entry"), "{msg}");
         assert!(msg.contains("run the uninstall again"), "{msg}");
         assert!(!msg.contains("add this by hand"), "{msg}");
         assert!(!msg.contains("Add this by hand"), "{msg}");
@@ -880,7 +883,7 @@ fn paths(changes: &[Change]) -> Vec<&Path> {
 }
 
 fn cli(h: &Home) -> Command {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_agentmail"));
+    let mut c = Command::new(env!("CARGO_BIN_EXE_agent-communication"));
     c.env("HOME", h.home())
         .env_remove("CLAUDE_CONFIG_DIR")
         .current_dir(h.proj())
@@ -931,10 +934,10 @@ fn cli_install_and_uninstall() {
         .clone();
     let out = String::from_utf8(out).unwrap();
     assert!(out.contains(&h.settings().display().to_string()), "{out}");
-    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_agentmail")).unwrap();
+    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_agent-communication")).unwrap();
     let bin = bin.to_str().unwrap();
     assert_eq!(
-        read_json(&h.user_mcp())["mcpServers"]["agentmail"],
+        read_json(&h.user_mcp())["mcpServers"]["agent-communication"],
         expected_server(bin)
     );
     let out = cli(&h)
@@ -1051,7 +1054,7 @@ fn cli_refuses_unparsable_settings() {
     assert!(err.starts_with("error: "), "{err}");
     assert!(err.contains("settings.json"), "{err}");
     assert!(
-        err.contains("agentmail hook"),
+        err.contains("agent-communication hook"),
         "the snippet to add by hand: {err}"
     );
     assert_eq!(read(&h.settings()), text);
@@ -1078,7 +1081,7 @@ impl Home {
     }
 
     fn oc_plugin(&self) -> PathBuf {
-        self.oc_dir().join("plugins/agentmail.js")
+        self.oc_dir().join("plugins/agent-communication.js")
     }
 }
 
@@ -1088,14 +1091,14 @@ fn oc_server(bin: &str) -> Value {
 
 /// The plugin as shipped, with `bin` in place of the placeholder, signed.
 fn oc_plugin_text(bin: &str) -> String {
-    let src = include_str!("../plugin/agentmail.js");
+    let src = include_str!("../plugin/agent-communication.js");
     oc_sign(src.replace(
-        "\"__AGENTMAIL_BIN__\"",
+        "\"__AGENT_COMMUNICATION_BIN__\"",
         &serde_json::to_string(bin).unwrap(),
     ))
 }
 
-/// `body` with the digest line agentmail ends its plugin with: FNV-1a (64
+/// `body` with the digest line agent-communication ends its plugin with: FNV-1a (64
 /// bits) of the text above it.
 fn oc_sign(mut body: String) -> String {
     if !body.ends_with('\n') {
@@ -1104,20 +1107,26 @@ fn oc_sign(mut body: String) -> String {
     let digest = body.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
         (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
     });
-    body.push_str(&format!("// agentmail-digest: fnv1a64:{digest:016x}\n"));
+    body.push_str(&format!(
+        "// agent-communication-digest: fnv1a64:{digest:016x}\n"
+    ));
     body
 }
 
-/// The plugin an older agentmail installed for `bin`: other text, signed
+/// The plugin an older agent-communication installed for `bin`: other text, signed
 /// as every version signs it.
 fn oc_older_plugin(bin: &str, version: u32) -> String {
     let text = oc_plugin_text(bin);
     let body = &text[..text.trim_end_matches('\n').rfind('\n').unwrap() + 1];
-    oc_sign(body.replacen('\n', &format!("\n// shipped by agentmail 0.{version}\n"), 1))
+    oc_sign(body.replacen(
+        '\n',
+        &format!("\n// shipped by agent-communication 0.{version}\n"),
+        1,
+    ))
 }
 
 /// A user's opencode.json in the V2 shape, with another server, a plugin
-/// package and keys agentmail does not touch.
+/// package and keys agent-communication does not touch.
 const OC_V2: &str = r#"{
   "$schema": "https://opencode.ai/config.json",
   "model": "anthropic/claude-sonnet",
@@ -1158,7 +1167,7 @@ fn opencode_install_into_empty() {
     );
     assert_eq!(
         read_json(&h.oc_config()),
-        json!({"mcp": {"servers": {"agentmail": oc_server(BIN)}}})
+        json!({"mcp": {"servers": {"agent-communication": oc_server(BIN)}}})
     );
     assert_eq!(read(&h.oc_plugin()), oc_plugin_text(BIN));
 }
@@ -1170,7 +1179,7 @@ fn opencode_install_v2_shape() {
     install(&oc_opts(false, BIN), &h.env(&[]));
     let text = read(&h.oc_config());
     let mut want: Value = serde_json::from_str(OC_V2).unwrap();
-    want["mcp"]["servers"]["agentmail"] = oc_server(BIN);
+    want["mcp"]["servers"]["agent-communication"] = oc_server(BIN);
     assert_eq!(serde_json::from_str::<Value>(&text).unwrap(), want);
     // Everything else is kept as written, ours added after the others.
     assert!(
@@ -1188,15 +1197,15 @@ fn opencode_install_v2_shape() {
 #[test]
 fn opencode_install_v1_shape_preserved() {
     // opencode 2.0.27 reads V1 entries but drops `codemode` from them, so
-    // agentmail's entry goes under `servers` (as `opencode mcp add` does
+    // agent-communication's entry goes under `servers` (as `opencode mcp add` does
     // in a V1 file) and the user's V1 entries stay exactly as written.
     let h = Home::new();
     write(&h.oc_config(), OC_V1);
     install(&oc_opts(false, BIN), &h.env(&[]));
     let text = read(&h.oc_config());
     let v: Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(v["mcp"]["servers"]["agentmail"], oc_server(BIN));
-    assert!(v["mcp"].get("agentmail").is_none());
+    assert_eq!(v["mcp"]["servers"]["agent-communication"], oc_server(BIN));
+    assert!(v["mcp"].get("agent-communication").is_none());
     assert!(
         text.contains("    \"github\": {\n      \"type\": \"local\",\n      \"command\": [\"gh-mcp\"],\n      \"enabled\": true\n    },\n"),
         "{text}"
@@ -1207,20 +1216,20 @@ fn opencode_install_v1_shape_preserved() {
 }
 
 #[test]
-fn opencode_legacy_agentmail_entry_moves_to_servers() {
+fn opencode_legacy_agent_communication_entry_moves_to_servers() {
     let h = Home::new();
     write(
         &h.oc_config(),
-        r#"{"mcp": {"agentmail": {"type": "local", "command": ["/old/agentmail", "mcp"], "environment": {"AGENTMAIL_DATA_DIR": "/d"}, "enabled": false}}}"#,
+        r#"{"mcp": {"agent-communication": {"type": "local", "command": ["/old/agent-communication", "mcp"], "environment": {"AGENT_COMMUNICATION_DATA_DIR": "/d"}, "enabled": false}}}"#,
     );
     install(&oc_opts(false, BIN), &h.env(&[]));
     let v = read_json(&h.oc_config());
-    assert!(v["mcp"].get("agentmail").is_none(), "{v}");
+    assert!(v["mcp"].get("agent-communication").is_none(), "{v}");
     assert_eq!(
-        v["mcp"]["servers"]["agentmail"],
-        json!({"type": "local", "command": [BIN, "mcp"], "codemode": false, "environment": {"AGENTMAIL_DATA_DIR": "/d"}, "disabled": true})
+        v["mcp"]["servers"]["agent-communication"],
+        json!({"type": "local", "command": [BIN, "mcp"], "codemode": false, "environment": {"AGENT_COMMUNICATION_DATA_DIR": "/d"}, "disabled": true})
     );
-    // It was agentmail's: uninstall takes it out with the `mcp` it emptied.
+    // It was agent-communication's: uninstall takes it out with the `mcp` it emptied.
     uninstall(&oc_opts(false, BIN), &h.env(&[]));
     assert_eq!(read_json(&h.oc_config()), json!({}));
 }
@@ -1237,7 +1246,7 @@ fn opencode_jsonc_with_comments_refused_unchanged() {
     assert!(msg.contains("opencode.jsonc"), "{msg}");
     assert!(msg.contains("comments"), "{msg}");
     // The exact entry to paste.
-    assert!(msg.contains("\"agentmail\": {"), "{msg}");
+    assert!(msg.contains("\"agent-communication\": {"), "{msg}");
     assert!(msg.contains(&format!("\"{BIN}\"")), "{msg}");
     assert!(msg.contains("\"codemode\": false"), "{msg}");
     // opencode reloads its config by itself: no service restart, which
@@ -1253,7 +1262,7 @@ fn opencode_jsonc_with_comments_refused_unchanged() {
     // plugin; uninstall asks for the entry to be removed by hand.
     let pasted = text.replace(
         "{\"servers\": {}}",
-        &format!("{{\"servers\": {{\"agentmail\": {{\"type\": \"local\", \"command\": [\"{BIN}\", \"mcp\"], \"codemode\": false}}}}}}"),
+        &format!("{{\"servers\": {{\"agent-communication\": {{\"type\": \"local\", \"command\": [\"{BIN}\", \"mcp\"], \"codemode\": false}}}}}}"),
     );
     write(&path, &pasted);
     let changes = install(&oc_opts(false, BIN), &h.env(&[]));
@@ -1283,7 +1292,7 @@ fn opencode_jsonc_without_comments_is_edited() {
     install(&oc_opts(false, BIN), &h.env(&[]));
     assert!(!h.oc_config().exists(), "the existing .jsonc is the config");
     assert_eq!(
-        read_json(&path)["mcp"]["servers"]["agentmail"],
+        read_json(&path)["mcp"]["servers"]["agent-communication"],
         oc_server(BIN)
     );
 }
@@ -1297,7 +1306,7 @@ fn opencode_json_preferred_over_jsonc() {
     install(&oc_opts(false, BIN), &h.env(&[]));
     assert_eq!(read(&jsonc), "{}\n");
     assert_eq!(
-        read_json(&h.oc_config())["mcp"]["servers"]["agentmail"],
+        read_json(&h.oc_config())["mcp"]["servers"]["agent-communication"],
         oc_server(BIN)
     );
 }
@@ -1311,24 +1320,27 @@ fn opencode_entry_in_jsonc_beside_json_is_updated_and_removed() {
     write(&h.oc_config(), "{\"theme\": \"dark\"}\n");
     write(
         &jsonc,
-        "{\"mcp\": {\"servers\": {\"agentmail\": {\"type\": \"local\", \"command\": [\"/old/agentmail\", \"mcp\"], \"environment\": {\"A\": \"1\"}}}}}\n",
+        "{\"mcp\": {\"servers\": {\"agent-communication\": {\"type\": \"local\", \"command\": [\"/old/agent-communication\", \"mcp\"], \"environment\": {\"A\": \"1\"}}}}}\n",
     );
     let changes = install(&oc_opts(false, BIN), &h.env(&[]));
     assert_eq!(paths(&changes), [jsonc.as_path(), h.oc_plugin().as_path()]);
     assert_eq!(read(&h.oc_config()), "{\"theme\": \"dark\"}\n");
     let mut want = oc_server(BIN);
     want["environment"] = json!({"A": "1"});
-    assert_eq!(read_json(&jsonc)["mcp"]["servers"]["agentmail"], want);
+    assert_eq!(
+        read_json(&jsonc)["mcp"]["servers"]["agent-communication"],
+        want
+    );
 
     // An entry in both files: both are updated, and uninstall removes both.
     write(
         &h.oc_config(),
-        "{\"theme\": \"dark\", \"mcp\": {\"agentmail\": {\"type\": \"local\", \"command\": [\"/old/agentmail\", \"mcp\"]}}}\n",
+        "{\"theme\": \"dark\", \"mcp\": {\"agent-communication\": {\"type\": \"local\", \"command\": [\"/old/agent-communication\", \"mcp\"]}}}\n",
     );
     let changes = install(&oc_opts(false, BIN), &h.env(&[]));
     assert_eq!(paths(&changes), [h.oc_config().as_path()]);
     assert_eq!(
-        read_json(&h.oc_config())["mcp"]["servers"]["agentmail"],
+        read_json(&h.oc_config())["mcp"]["servers"]["agent-communication"],
         oc_server(BIN)
     );
     let changes = uninstall(&oc_opts(false, BIN), &h.env(&[]));
@@ -1349,7 +1361,7 @@ fn opencode_commented_jsonc_beside_json_is_refused() {
     let h = Home::new();
     let jsonc = h.oc_dir().join("opencode.jsonc");
     write(&h.oc_config(), "{}\n");
-    let text = "{\n  // pasted by hand\n  \"mcp\": {\"servers\": {\"agentmail\": {\"type\": \"local\", \"command\": [\"/old/agentmail\", \"mcp\"], \"codemode\": false}}}\n}\n";
+    let text = "{\n  // pasted by hand\n  \"mcp\": {\"servers\": {\"agent-communication\": {\"type\": \"local\", \"command\": [\"/old/agent-communication\", \"mcp\"], \"codemode\": false}}}\n}\n";
     write(&jsonc, text);
     for err in [
         install::plan_install(&oc_opts(false, BIN), &h.env(&[])).unwrap_err(),
@@ -1370,19 +1382,19 @@ fn opencode_commented_config_with_legacy_entry_says_to_delete_it() {
     let path = h.oc_dir().join("opencode.jsonc");
     // The V1 entry, plus the servers entry pasted as told.
     let text = format!(
-        "{{\n  // mine\n  \"mcp\": {{\n    \"agentmail\": {{\"type\": \"local\", \"command\": [\"/old/agentmail\", \"mcp\"]}},\n    \"servers\": {{\"agentmail\": {{\"type\": \"local\", \"command\": [\"{BIN}\", \"mcp\"], \"codemode\": false}}}}\n  }}\n}}\n"
+        "{{\n  // mine\n  \"mcp\": {{\n    \"agent-communication\": {{\"type\": \"local\", \"command\": [\"/old/agent-communication\", \"mcp\"]}},\n    \"servers\": {{\"agent-communication\": {{\"type\": \"local\", \"command\": [\"{BIN}\", \"mcp\"], \"codemode\": false}}}}\n  }}\n}}\n"
     );
     write(&path, &text);
     let err = install::plan_install(&oc_opts(false, BIN), &h.env(&[])).unwrap_err();
     let msg = format!("{err:#}");
     assert!(
-        msg.contains("delete the \"agentmail\" entry directly under \"mcp\""),
+        msg.contains("delete the \"agent-communication\" entry directly under \"mcp\""),
         "{msg}"
     );
     assert_eq!(read(&path), text);
     // With it deleted, the file is as install would leave it.
     let fixed = text.replace(
-        "    \"agentmail\": {\"type\": \"local\", \"command\": [\"/old/agentmail\", \"mcp\"]},\n",
+        "    \"agent-communication\": {\"type\": \"local\", \"command\": [\"/old/agent-communication\", \"mcp\"]},\n",
         "",
     );
     assert_ne!(fixed, text);
@@ -1390,7 +1402,7 @@ fn opencode_commented_config_with_legacy_entry_says_to_delete_it() {
     let changes = install(&oc_opts(false, BIN), &h.env(&[]));
     assert_eq!(paths(&changes), [h.oc_plugin().as_path()]);
     // Without a V1 entry the message does not mention one.
-    let unpasted = fixed.replace(&format!("\"{BIN}\""), "\"/old/agentmail\"");
+    let unpasted = fixed.replace(&format!("\"{BIN}\""), "\"/old/agent-communication\"");
     write(&path, &unpasted);
     let err = install::plan_install(&oc_opts(false, BIN), &h.env(&[])).unwrap_err();
     assert!(!format!("{err:#}").contains("directly under"), "{err:#}");
@@ -1402,16 +1414,16 @@ fn opencode_legacy_entry_beside_servers_entry_is_carried_over() {
     write(
         &h.oc_config(),
         r#"{"mcp": {
-  "agentmail": {"type": "local", "command": ["/old/agentmail", "mcp"], "environment": {"A": "1"}, "cwd": "/w", "timeout": 5, "protocol": "x", "enabled": false},
-  "servers": {"agentmail": {"type": "local", "command": ["/old/agentmail", "mcp"], "timeout": 9}}
+  "agent-communication": {"type": "local", "command": ["/old/agent-communication", "mcp"], "environment": {"A": "1"}, "cwd": "/w", "timeout": 5, "protocol": "x", "enabled": false},
+  "servers": {"agent-communication": {"type": "local", "command": ["/old/agent-communication", "mcp"], "timeout": 9}}
 }}"#,
     );
     install(&oc_opts(false, BIN), &h.env(&[]));
     let v = read_json(&h.oc_config());
-    assert!(v["mcp"].get("agentmail").is_none(), "{v}");
+    assert!(v["mcp"].get("agent-communication").is_none(), "{v}");
     // The servers entry's own keys win; the rest come from the V1 entry.
     assert_eq!(
-        v["mcp"]["servers"]["agentmail"],
+        v["mcp"]["servers"]["agent-communication"],
         json!({"type": "local", "command": [BIN, "mcp"], "timeout": 9, "codemode": false, "environment": {"A": "1"}, "cwd": "/w", "protocol": "x", "disabled": true})
     );
 }
@@ -1424,8 +1436,8 @@ fn opencode_unparsable_config_on_uninstall_says_remove_not_add() {
         let err = install::plan_uninstall(&oc_opts(false, BIN), &h.env(&[])).unwrap_err();
         let msg = format!("{err:#}");
         assert!(msg.contains("opencode.json"), "{msg}");
-        assert!(msg.contains("remove agentmail's entry"), "{msg}");
-        assert!(msg.contains("mcp.servers.agentmail"), "{msg}");
+        assert!(msg.contains("remove agent-communication's entry"), "{msg}");
+        assert!(msg.contains("mcp.servers.agent-communication"), "{msg}");
         assert!(msg.contains("run the uninstall again"), "{msg}");
         assert!(!msg.contains("add this by hand"), "{msg}");
         assert!(!msg.contains("Add this by hand"), "{msg}");
@@ -1455,7 +1467,7 @@ fn opencode_trailing_commas_are_jsonc_not_a_parse_error() {
     // Pasted: left alone, the plugin installed; uninstall asks again.
     let pasted = text.replace(
         "{\"servers\": {},}",
-        &format!("{{\"servers\": {{\"agentmail\": {{\"type\": \"local\", \"command\": [\"{BIN}\", \"mcp\"], \"codemode\": false,}},}},}}"),
+        &format!("{{\"servers\": {{\"agent-communication\": {{\"type\": \"local\", \"command\": [\"{BIN}\", \"mcp\"], \"codemode\": false,}},}},}}"),
     );
     write(&path, &pasted);
     let changes = install(&oc_opts(false, BIN), &h.env(&[]));
@@ -1468,20 +1480,23 @@ fn opencode_trailing_commas_are_jsonc_not_a_parse_error() {
 #[test]
 fn opencode_plugin_bin_substituted() {
     let h = Home::new();
-    let bin = "/opt/my \"agent\" mail\\bin/agentmail";
+    let bin = "/opt/my \"agent\" mail\\bin/agent-communication";
     install(&oc_opts(false, bin), &h.env(&[]));
     let text = read(&h.oc_plugin());
-    assert!(!text.contains("\"__AGENTMAIL_BIN__\""), "placeholder left");
     assert!(
-        text.contains(r#"const BIN = "/opt/my \"agent\" mail\\bin/agentmail";"#),
+        !text.contains("\"__AGENT_COMMUNICATION_BIN__\""),
+        "placeholder left"
+    );
+    assert!(
+        text.contains(r#"const BIN = "/opt/my \"agent\" mail\\bin/agent-communication";"#),
         "{}",
         &text[..text.len().min(2000)]
     );
     // The plugin's own check of its placeholder survives.
-    assert!(text.contains("\"__AGENTMAIL\" + \"_BIN__\""));
+    assert!(text.contains("\"__AGENT_COMMUNICATION\" + \"_BIN__\""));
     assert_eq!(text, oc_plugin_text(bin));
     assert_eq!(
-        read_json(&h.oc_config())["mcp"]["servers"]["agentmail"]["command"],
+        read_json(&h.oc_config())["mcp"]["servers"]["agent-communication"]["command"],
         json!([bin, "mcp"])
     );
 }
@@ -1499,17 +1514,20 @@ fn opencode_idempotent() {
     );
     // A new binary path updates both, keeping what the user added.
     let mut v = read_json(&h.oc_config());
-    v["mcp"]["servers"]["agentmail"]["environment"] = json!({"A": "1"});
+    v["mcp"]["servers"]["agent-communication"]["environment"] = json!({"A": "1"});
     write(&h.oc_config(), &serde_json::to_string_pretty(&v).unwrap());
-    let changes = install(&oc_opts(false, "/new/agentmail"), &env);
+    let changes = install(&oc_opts(false, "/new/agent-communication"), &env);
     assert_eq!(changes.len(), 2);
     assert_eq!(
-        read_json(&h.oc_config())["mcp"]["servers"]["agentmail"],
-        json!({"type": "local", "command": ["/new/agentmail", "mcp"], "codemode": false, "environment": {"A": "1"}})
+        read_json(&h.oc_config())["mcp"]["servers"]["agent-communication"],
+        json!({"type": "local", "command": ["/new/agent-communication", "mcp"], "codemode": false, "environment": {"A": "1"}})
     );
-    assert_eq!(read(&h.oc_plugin()), oc_plugin_text("/new/agentmail"));
+    assert_eq!(
+        read(&h.oc_plugin()),
+        oc_plugin_text("/new/agent-communication")
+    );
     assert!(
-        install::plan_install(&oc_opts(false, "/new/agentmail"), &env)
+        install::plan_install(&oc_opts(false, "/new/agent-communication"), &env)
             .unwrap()
             .is_empty()
     );
@@ -1531,7 +1549,7 @@ fn opencode_uninstall_removes_plugin_and_entry() {
     assert!(!marker(&h.oc_plugin()).exists());
     assert!(
         !h.oc_dir().join("plugins").exists(),
-        "the plugins dir agentmail made"
+        "the plugins dir agent-communication made"
     );
     assert!(
         install::plan_uninstall(&oc_opts(false, BIN), &env)
@@ -1553,7 +1571,10 @@ fn opencode_foreign_plugin_file_is_refused() {
     let mine = "export default { id: \"mine\", setup() {} };\n";
     write(&h.oc_plugin(), mine);
     let err = install::plan_install(&oc_opts(false, BIN), &h.env(&[])).unwrap_err();
-    assert!(format!("{err:#}").contains("agentmail.js"), "{err:#}");
+    assert!(
+        format!("{err:#}").contains("agent-communication.js"),
+        "{err:#}"
+    );
     assert!(!h.oc_config().exists());
     // Uninstall leaves it alone.
     assert!(
@@ -1574,7 +1595,8 @@ fn opencode_respects_xdg() {
         paths(&changes),
         [
             xdg.join("opencode/opencode.json").as_path(),
-            xdg.join("opencode/plugins/agentmail.js").as_path()
+            xdg.join("opencode/plugins/agent-communication.js")
+                .as_path()
         ]
     );
     assert!(!h.oc_dir().exists());
@@ -1587,7 +1609,8 @@ fn opencode_respects_xdg() {
         paths(&changes),
         [
             rel.join("opencode/opencode.json").as_path(),
-            rel.join("opencode/plugins/agentmail.js").as_path()
+            rel.join("opencode/plugins/agent-communication.js")
+                .as_path()
         ]
     );
     // An empty variable is unset.
@@ -1605,10 +1628,10 @@ fn opencode_project_scope() {
     let env = h.env(&[]);
     let changes = install(&oc_opts(true, BIN), &env);
     let cfg = h.proj().join("opencode.json");
-    let plugin = h.proj().join(".opencode/plugins/agentmail.js");
+    let plugin = h.proj().join(".opencode/plugins/agent-communication.js");
     assert_eq!(paths(&changes), [cfg.as_path(), plugin.as_path()]);
     assert_eq!(
-        read_json(&cfg)["mcp"]["servers"]["agentmail"],
+        read_json(&cfg)["mcp"]["servers"]["agent-communication"],
         oc_server(BIN)
     );
     assert_eq!(read(&plugin), oc_plugin_text(BIN));
@@ -1621,7 +1644,7 @@ fn opencode_project_scope() {
 #[test]
 fn opencode_project_dot_opencode_entry_updated_and_removed() {
     // opencode merges ./.opencode/opencode.json(c) after ./opencode.json:
-    // a stale agentmail entry there would override the one install writes.
+    // a stale agent-communication entry there would override the one install writes.
     let h = Home::new();
     let env = h.env(&[]);
     let direct = h.proj().join("opencode.json");
@@ -1633,7 +1656,7 @@ fn opencode_project_dot_opencode_entry_updated_and_removed() {
     // .opencode configs there.
     write(&dot, "{\n  \"theme\": \"light\"\n}\n");
     let changes = install(&oc_opts(true, BIN), &env);
-    let plugin = h.proj().join(".opencode/plugins/agentmail.js");
+    let plugin = h.proj().join(".opencode/plugins/agent-communication.js");
     assert_eq!(paths(&changes), [direct.as_path(), plugin.as_path()]);
     assert_eq!(read_json(&dot), json!({"theme": "light"}));
     uninstall(&oc_opts(true, BIN), &env);
@@ -1643,33 +1666,33 @@ fn opencode_project_dot_opencode_entry_updated_and_removed() {
     // updated there.
     write(
         &dot,
-        "{\n  \"mcp\": {\n    \"agentmail\": {\"type\": \"local\", \"command\": [\"/old/agentmail\", \"mcp\"]}\n  }\n}\n",
+        "{\n  \"mcp\": {\n    \"agent-communication\": {\"type\": \"local\", \"command\": [\"/old/agent-communication\", \"mcp\"]}\n  }\n}\n",
     );
     let changes = install(&oc_opts(true, BIN), &env);
     assert_eq!(paths(&changes), [dot.as_path(), plugin.as_path()]);
     assert_eq!(
         read_json(&dot),
-        json!({"mcp": {"servers": {"agentmail": oc_server(BIN)}}})
+        json!({"mcp": {"servers": {"agent-communication": oc_server(BIN)}}})
     );
     assert_eq!(read_json(&direct), json!({"theme": "dark"}));
     // Uninstall removes it from every config, the .opencode ones included.
     write(
         &direct,
         &format!(
-            "{{\"theme\": \"dark\", \"mcp\": {{\"servers\": {{\"agentmail\": {}}}}}}}\n",
+            "{{\"theme\": \"dark\", \"mcp\": {{\"servers\": {{\"agent-communication\": {}}}}}}}\n",
             oc_server(BIN)
         ),
     );
     uninstall(&oc_opts(true, BIN), &env);
-    assert!(!read_json(&dot).to_string().contains("agentmail"));
+    assert!(!read_json(&dot).to_string().contains("agent-communication"));
     assert_eq!(read_json(&direct), json!({"theme": "dark"}));
     assert!(!plugin.exists());
 
     // The same JSONC rule: a commented .opencode/opencode.jsonc with an
     // entry is refused and nothing changes.
     let commented = format!(
-        "{{\n  // mine\n  \"mcp\": {{\"servers\": {{\"agentmail\": {}}}}}\n}}\n",
-        oc_server("/old/agentmail")
+        "{{\n  // mine\n  \"mcp\": {{\"servers\": {{\"agent-communication\": {}}}}}\n}}\n",
+        oc_server("/old/agent-communication")
     );
     write(&dotc, &commented);
     let before_direct = read(&direct);
@@ -1696,7 +1719,7 @@ fn cli_opencode_install_and_uninstall() {
     let out = String::from_utf8(out).unwrap();
     assert!(out.contains(&h.oc_plugin().display().to_string()), "{out}");
     assert!(
-        out.contains("agentmail is installed for opencode."),
+        out.contains("agent-communication is installed for opencode."),
         "{out}"
     );
     // opencode's background service watches its config and plugin files
@@ -1704,10 +1727,10 @@ fn cli_opencode_install_and_uninstall() {
     // restarting the service would interrupt every opencode session).
     assert!(!out.contains("restart"), "{out}");
     assert!(!out.contains("Restart"), "{out}");
-    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_agentmail")).unwrap();
+    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_agent-communication")).unwrap();
     let bin = bin.to_str().unwrap();
     assert_eq!(
-        read_json(&h.oc_config())["mcp"]["servers"]["agentmail"],
+        read_json(&h.oc_config())["mcp"]["servers"]["agent-communication"],
         oc_server(bin)
     );
     assert_eq!(read(&h.oc_plugin()), oc_plugin_text(bin));
@@ -1756,7 +1779,10 @@ fn cli_opencode_install_and_uninstall() {
         .stdout
         .clone();
     let out = String::from_utf8(out).unwrap();
-    assert!(out.contains("agentmail is removed from opencode."), "{out}");
+    assert!(
+        out.contains("agent-communication is removed from opencode."),
+        "{out}"
+    );
     assert!(!out.contains("restart"), "{out}");
     assert!(!out.contains("Restart"), "{out}");
     assert!(!h.oc_config().exists());
@@ -1787,8 +1813,8 @@ fn opencode_symlinked_plugin_is_never_written_through() {
     let h = Home::new();
     let env = h.env(&[]);
     // A dev or dotfiles setup: the plugin is a link to a copy elsewhere.
-    let src = h.dir.path().join("src/agentmail.js");
-    let shipped = include_str!("../plugin/agentmail.js");
+    let src = h.dir.path().join("src/agent-communication.js");
+    let shipped = include_str!("../plugin/agent-communication.js");
     write(&src, shipped);
     std::fs::create_dir_all(h.oc_plugin().parent().unwrap()).unwrap();
     std::os::unix::fs::symlink(&src, h.oc_plugin()).unwrap();
@@ -1796,7 +1822,7 @@ fn opencode_symlinked_plugin_is_never_written_through() {
     let err = install::plan_install(&oc_opts(false, BIN), &env).unwrap_err();
     let msg = format!("{err:#}");
     assert!(msg.contains("symbolic link"), "{msg}");
-    assert!(msg.contains("agentmail.js"), "{msg}");
+    assert!(msg.contains("agent-communication.js"), "{msg}");
     assert!(!h.oc_config().exists());
     assert_eq!(read(&src), shipped);
     assert!(!bak(&h.oc_plugin()).exists());
@@ -1813,14 +1839,14 @@ fn opencode_symlinked_plugin_is_never_written_through() {
 
 #[test]
 fn opencode_symlinked_plugin_in_singular_dir_is_refused() {
-    // A dev link at plugin/agentmail.js shadows the installed plugin, but
+    // A dev link at plugin/agent-communication.js shadows the installed plugin, but
     // it is the user's setup: install refuses rather than removing it.
     let h = Home::new();
     let env = h.env(&[]);
-    let src = h.dir.path().join("src/agentmail.js");
-    let text = oc_plugin_text("/home/dev/agentmail");
+    let src = h.dir.path().join("src/agent-communication.js");
+    let text = oc_plugin_text("/home/dev/agent-communication");
     write(&src, &text);
-    let legacy = h.oc_dir().join("plugin/agentmail.js");
+    let legacy = h.oc_dir().join("plugin/agent-communication.js");
     std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
     std::os::unix::fs::symlink(&src, &legacy).unwrap();
 
@@ -1829,7 +1855,7 @@ fn opencode_symlinked_plugin_in_singular_dir_is_refused() {
     assert!(msg.contains("symbolic link"), "{msg}");
     assert!(msg.contains("shadows"), "{msg}");
     assert!(msg.contains("Remove the link"), "{msg}");
-    assert!(msg.contains("plugin/agentmail.js"), "{msg}");
+    assert!(msg.contains("plugin/agent-communication.js"), "{msg}");
     assert!(
         std::fs::symlink_metadata(&legacy)
             .unwrap()
@@ -1846,7 +1872,7 @@ fn opencode_symlinked_plugin_in_singular_dir_is_refused() {
     assert!(std::fs::symlink_metadata(&legacy).is_err());
     assert_eq!(read(&src), text);
 
-    // A link to a file that is not agentmail's plugin is left alone.
+    // A link to a file that is not agent-communication's plugin is left alone.
     let other = h.dir.path().join("src/other.js");
     write(&other, "export default {}\n");
     std::os::unix::fs::symlink(&other, &legacy).unwrap();
@@ -1855,16 +1881,16 @@ fn opencode_symlinked_plugin_in_singular_dir_is_refused() {
 }
 
 #[test]
-fn opencode_plugin_agentmail_created_then_symlinked_keeps_link_target() {
-    // agentmail created the plugin (its marker says so), then the user
+fn opencode_plugin_agent_communication_created_then_symlinked_keeps_link_target() {
+    // agent-communication created the plugin (its marker says so), then the user
     // swapped it for a link to their own copy: uninstall removes only the
     // link and the marker, never the file the link points to.
     let h = Home::new();
     let env = h.env(&[]);
     install(&oc_opts(false, BIN), &env);
     assert!(marker(&h.oc_plugin()).exists());
-    let src = h.dir.path().join("src/agentmail.js");
-    let text = oc_plugin_text("/home/dev/agentmail");
+    let src = h.dir.path().join("src/agent-communication.js");
+    let text = oc_plugin_text("/home/dev/agent-communication");
     write(&src, &text);
     std::fs::remove_file(h.oc_plugin()).unwrap();
     std::os::unix::fs::symlink(&src, h.oc_plugin()).unwrap();
@@ -1878,14 +1904,14 @@ fn opencode_plugin_agentmail_created_then_symlinked_keeps_link_target() {
 #[test]
 fn opencode_unreadable_plugin_in_other_scope_is_no_plugin() {
     // The notes are advisory: a path in the other scope that cannot be
-    // read (a directory, a file that is not UTF-8) is no agentmail plugin
+    // read (a directory, a file that is not UTF-8) is no agent-communication plugin
     // there, and never stops the install or uninstall.
     let h = Home::new();
     let env = h.env(&[]);
-    std::fs::create_dir_all(h.proj().join(".opencode/plugins/agentmail.js")).unwrap();
-    let odd = h.proj().join(".opencode/plugin/agentmail.js");
+    std::fs::create_dir_all(h.proj().join(".opencode/plugins/agent-communication.js")).unwrap();
+    let odd = h.proj().join(".opencode/plugin/agent-communication.js");
     std::fs::create_dir_all(odd.parent().unwrap()).unwrap();
-    std::fs::write(&odd, b"// agentmail for opencode\n\xff\xfe\n").unwrap();
+    std::fs::write(&odd, b"// agent-communication for opencode\n\xff\xfe\n").unwrap();
     assert!(
         install::notes(&oc_opts(false, BIN), &env, true)
             .unwrap()
@@ -1911,18 +1937,18 @@ fn opencode_unreadable_plugin_in_other_scope_is_no_plugin() {
 }
 
 #[test]
-fn opencode_plugin_agentmail_did_not_create_is_restored_or_removed() {
+fn opencode_plugin_agent_communication_did_not_create_is_restored_or_removed() {
     let h = Home::new();
     let env = h.env(&[]);
     // Copied by hand: no marker, no backup. Uninstall removes the file.
-    write(&h.oc_plugin(), &oc_plugin_text("/old/agentmail"));
+    write(&h.oc_plugin(), &oc_plugin_text("/old/agent-communication"));
     let changes = uninstall(&oc_opts(false, BIN), &env);
     assert_eq!(paths(&changes), [h.oc_plugin().as_path()]);
     assert!(!h.oc_plugin().exists());
 
-    // A backup of a file that is not agentmail's is put back.
+    // A backup of a file that is not agent-communication's is put back.
     let mine = "export default { id: \"mine\", setup() {} };\n";
-    write(&h.oc_plugin(), &oc_plugin_text("/old/agentmail"));
+    write(&h.oc_plugin(), &oc_plugin_text("/old/agent-communication"));
     write(&bak(&h.oc_plugin()), mine);
     #[cfg(unix)]
     {
@@ -1944,13 +1970,16 @@ fn opencode_plugin_agentmail_did_not_create_is_restored_or_removed() {
             .mode();
         assert_eq!(mode & 0o777, 0o644);
     }
-    // Later runs find nothing of agentmail's there.
+    // Later runs find nothing of agent-communication's there.
     let err = install::plan_install(&oc_opts(false, BIN), &env).unwrap_err();
-    assert!(err.to_string().contains("not agentmail's plugin"), "{err}");
+    assert!(
+        err.to_string().contains("not agent-communication's plugin"),
+        "{err}"
+    );
     assert!(uninstall(&oc_opts(false, BIN), &env).is_empty());
 
-    // An edited agentmail plugin takes the place of the backup put back.
-    let edited = oc_edited_plugin("/old/agentmail");
+    // An edited agent-communication plugin takes the place of the backup put back.
+    let edited = oc_edited_plugin("/old/agent-communication");
     write(&bak(&h.oc_plugin()), mine);
     write(&h.oc_plugin(), &edited);
     let changes = uninstall(&oc_opts(false, BIN), &env);
@@ -1967,8 +1996,8 @@ fn opencode_plugin_in_singular_plugin_dir_is_removed() {
     // which would never run.
     let h = Home::new();
     let env = h.env(&[]);
-    let legacy = h.oc_dir().join("plugin/agentmail.js");
-    write(&legacy, &oc_plugin_text("/old/agentmail"));
+    let legacy = h.oc_dir().join("plugin/agent-communication.js");
+    write(&legacy, &oc_plugin_text("/old/agent-communication"));
     let changes = install(&oc_opts(false, BIN), &env);
     assert_eq!(
         paths(&changes),
@@ -1981,12 +2010,12 @@ fn opencode_plugin_in_singular_plugin_dir_is_removed() {
     assert!(!legacy.exists());
     assert_eq!(read(&h.oc_plugin()), oc_plugin_text(BIN));
 
-    write(&legacy, &oc_plugin_text("/old/agentmail"));
+    write(&legacy, &oc_plugin_text("/old/agent-communication"));
     uninstall(&oc_opts(false, BIN), &env);
     assert!(!legacy.exists());
     assert!(!h.oc_plugin().exists());
 
-    // One that is not agentmail's is left alone.
+    // One that is not agent-communication's is left alone.
     let mine = "export default { id: \"mine\", setup() {} };\n";
     write(&legacy, mine);
     let changes = install(&oc_opts(false, BIN), &env);
@@ -1995,26 +2024,26 @@ fn opencode_plugin_in_singular_plugin_dir_is_removed() {
     assert_eq!(read(&legacy), mine);
 
     // At project scope too.
-    let legacy = h.proj().join(".opencode/plugin/agentmail.js");
-    write(&legacy, &oc_plugin_text("/old/agentmail"));
+    let legacy = h.proj().join(".opencode/plugin/agent-communication.js");
+    write(&legacy, &oc_plugin_text("/old/agent-communication"));
     install(&oc_opts(true, BIN), &env);
     assert!(!legacy.exists());
 }
 
-/// An agentmail plugin the user edited by hand.
+/// An agent-communication plugin the user edited by hand.
 fn oc_edited_plugin(bin: &str) -> String {
     oc_plugin_text(bin).replacen('\n', "\n// my own tweak\n", 1)
 }
 
 #[test]
-fn opencode_edited_plugin_agentmail_did_not_create_is_kept_on_install() {
-    // A hand-placed `plugin/agentmail.js` with the user's own edits: install
+fn opencode_edited_plugin_agent_communication_did_not_create_is_kept_on_install() {
+    // A hand-placed `plugin/agent-communication.js` with the user's own edits: install
     // removes it (it would shadow the installed plugin) but keeps its text
     // as its backup, and says so.
     let h = Home::new();
     let env = h.env(&[]);
-    let legacy = h.oc_dir().join("plugin/agentmail.js");
-    let edited = oc_edited_plugin("/old/agentmail");
+    let legacy = h.oc_dir().join("plugin/agent-communication.js");
+    let edited = oc_edited_plugin("/old/agent-communication");
     write(&legacy, &edited);
     let changes = install(&oc_opts(false, BIN), &env);
     assert!(paths(&changes).contains(&legacy.as_path()));
@@ -2029,10 +2058,10 @@ fn opencode_edited_plugin_agentmail_did_not_create_is_kept_on_install() {
     uninstall(&oc_opts(false, BIN), &env);
     assert_eq!(read(&bak(&legacy)), edited);
 
-    // A plugin agentmail would write goes with no copy.
+    // A plugin agent-communication would write goes with no copy.
     let h = Home::new();
-    let legacy = h.oc_dir().join("plugin/agentmail.js");
-    write(&legacy, &oc_plugin_text("/old/agentmail"));
+    let legacy = h.oc_dir().join("plugin/agent-communication.js");
+    write(&legacy, &oc_plugin_text("/old/agent-communication"));
     install(&oc_opts(false, BIN), &h.env(&[]));
     assert!(!legacy.exists());
     assert!(!bak(&legacy).exists());
@@ -2043,7 +2072,7 @@ fn opencode_edited_plugin_is_kept_on_uninstall() {
     let h = Home::new();
     let env = h.env(&[]);
     // Copied by hand and edited: uninstall keeps its text as the backup.
-    let edited = oc_edited_plugin("/old/agentmail");
+    let edited = oc_edited_plugin("/old/agent-communication");
     write(&h.oc_plugin(), &edited);
     let changes = uninstall(&oc_opts(false, BIN), &env);
     assert_eq!(
@@ -2063,7 +2092,7 @@ fn opencode_edited_plugin_is_kept_on_uninstall() {
     assert_eq!(read(&bak(&h.oc_plugin())), edited);
 
     // Edited again with that copy there: saved beside it.
-    let again = oc_edited_plugin("/other/agentmail");
+    let again = oc_edited_plugin("/other/agent-communication");
     write(&h.oc_plugin(), &again);
     let changes = uninstall(&oc_opts(false, BIN), &env);
     let spare = PathBuf::from(format!("{}.1", bak(&h.oc_plugin()).display()));
@@ -2071,7 +2100,7 @@ fn opencode_edited_plugin_is_kept_on_uninstall() {
     assert_eq!(read(&bak(&h.oc_plugin())), edited);
     assert_eq!(read(&spare), again);
 
-    // Installed by agentmail, then edited: kept too.
+    // Installed by agent-communication, then edited: kept too.
     let h = Home::new();
     let env = h.env(&[]);
     install(&oc_opts(false, BIN), &env);
@@ -2084,10 +2113,10 @@ fn opencode_edited_plugin_is_kept_on_uninstall() {
 }
 
 #[test]
-fn opencode_upgrade_of_a_plugin_agentmail_created_leaves_no_backup() {
-    // Each agentmail version ships its own plugin text: replacing an older
+fn opencode_upgrade_of_a_plugin_agent_communication_created_leaves_no_backup() {
+    // Each agent-communication version ships its own plugin text: replacing an older
     // version's (untouched) plugin keeps no copy of it, and uninstall
-    // leaves nothing behind, not even the `plugins/` directory agentmail
+    // leaves nothing behind, not even the `plugins/` directory agent-communication
     // created.
     let h = Home::new();
     let env = h.env(&[]);
@@ -2107,12 +2136,15 @@ fn opencode_upgrade_of_a_plugin_agentmail_created_leaves_no_backup() {
     assert!(!bak(&h.oc_plugin()).exists());
     assert!(!plugins.exists(), "{}", plugins.display());
 
-    // An older version's plugin agentmail did not create: its backup holds
+    // An older version's plugin agent-communication did not create: its backup holds
     // that plugin, no edits are kept beside it on upgrade, and uninstall
     // removes both.
     let h = Home::new();
     let env = h.env(&[]);
-    write(&h.oc_plugin(), &oc_older_plugin("/old/agentmail", 1));
+    write(
+        &h.oc_plugin(),
+        &oc_older_plugin("/old/agent-communication", 1),
+    );
     install(&oc_opts(false, BIN), &env);
     write(&h.oc_plugin(), &oc_older_plugin(BIN, 2));
     let changes = install(&oc_opts(false, BIN), &env);
@@ -2126,13 +2158,13 @@ fn opencode_upgrade_of_a_plugin_agentmail_created_leaves_no_backup() {
 }
 
 #[test]
-fn opencode_edited_plugin_agentmail_created_is_saved_on_upgrade() {
-    // With no backup (agentmail created the file), an edited plugin that
+fn opencode_edited_plugin_agent_communication_created_is_saved_on_upgrade() {
+    // With no backup (agent-communication created the file), an edited plugin that
     // install replaces is saved as the backup, which uninstall keeps.
     let h = Home::new();
     let env = h.env(&[]);
-    install(&oc_opts(false, "/old/agentmail"), &env);
-    let edited = oc_edited_plugin("/old/agentmail");
+    install(&oc_opts(false, "/old/agent-communication"), &env);
+    let edited = oc_edited_plugin("/old/agent-communication");
     write(&h.oc_plugin(), &edited);
     let changes = install(&oc_opts(false, BIN), &env);
     let plugin = changes.iter().find(|c| c.path == h.oc_plugin()).unwrap();
@@ -2148,7 +2180,7 @@ fn opencode_edited_plugin_is_kept_when_its_backup_is_restored() {
     let h = Home::new();
     let env = h.env(&[]);
     let mine = "export default { id: \"mine\", setup() {} };\n";
-    let edited = oc_edited_plugin("/old/agentmail");
+    let edited = oc_edited_plugin("/old/agent-communication");
     write(&h.oc_plugin(), &edited);
     write(&bak(&h.oc_plugin()), mine);
     uninstall(&oc_opts(false, BIN), &env);
@@ -2162,11 +2194,11 @@ fn opencode_edited_plugin_is_kept_on_reinstall() {
     // edited plugin that install replaces is saved beside it.
     let h = Home::new();
     let env = h.env(&[]);
-    let first = oc_edited_plugin("/first/agentmail");
+    let first = oc_edited_plugin("/first/agent-communication");
     write(&h.oc_plugin(), &first);
     install(&oc_opts(false, BIN), &env);
     assert_eq!(read(&bak(&h.oc_plugin())), first);
-    let second = oc_edited_plugin("/second/agentmail");
+    let second = oc_edited_plugin("/second/agent-communication");
     write(&h.oc_plugin(), &second);
     install(&oc_opts(false, BIN), &env);
     assert_eq!(read(&h.oc_plugin()), oc_plugin_text(BIN));
@@ -2174,11 +2206,14 @@ fn opencode_edited_plugin_is_kept_on_reinstall() {
     let spare = PathBuf::from(format!("{}.1", bak(&h.oc_plugin()).display()));
     assert_eq!(read(&spare), second);
 
-    // An edited plugin over a backup agentmail would write replaces it.
+    // An edited plugin over a backup agent-communication would write replaces it.
     let h = Home::new();
     let env = h.env(&[]);
-    write(&bak(&h.oc_plugin()), &oc_plugin_text("/old/agentmail"));
-    let edited = oc_edited_plugin("/old/agentmail");
+    write(
+        &bak(&h.oc_plugin()),
+        &oc_plugin_text("/old/agent-communication"),
+    );
+    let edited = oc_edited_plugin("/old/agent-communication");
     write(&h.oc_plugin(), &edited);
     install(&oc_opts(false, BIN), &env);
     assert_eq!(read(&bak(&h.oc_plugin())), edited);
@@ -2186,7 +2221,7 @@ fn opencode_edited_plugin_is_kept_on_reinstall() {
 
 #[test]
 fn cli_opencode_upgrade_keeps_no_original_it_did_not_find() {
-    // agentmail created the plugin: replacing an older version's keeps no
+    // agent-communication created the plugin: replacing an older version's keeps no
     // "original", and says none.
     let h = Home::new();
     let plugin = h.oc_plugin();
@@ -2202,14 +2237,14 @@ fn cli_opencode_upgrade_keeps_no_original_it_did_not_find() {
         String::from_utf8(out).unwrap()
     };
     run(&["install", "--harness", "opencode"]);
-    write(&plugin, &oc_older_plugin("/old/agentmail", 1));
+    write(&plugin, &oc_older_plugin("/old/agent-communication", 1));
     let out = run(&["install", "--harness", "opencode"]);
     assert!(
         out.contains(&format!("updated {}\n", plugin.display())),
         "{out}"
     );
     assert!(!out.contains("kept as"), "{out}");
-    write(&plugin, &oc_older_plugin("/old/agentmail", 2));
+    write(&plugin, &oc_older_plugin("/old/agent-communication", 2));
     let out = run(&["--json", "install", "--harness", "opencode"]);
     let v: Value = serde_json::from_str(&out).unwrap();
     let entry = v["changes"]
@@ -2228,7 +2263,7 @@ fn cli_opencode_upgrade_keeps_no_original_it_did_not_find() {
 
 #[test]
 fn cli_opencode_says_a_plugin_was_restored() {
-    // Uninstall puts back a backup that is not agentmail's plugin: it says
+    // Uninstall puts back a backup that is not agent-communication's plugin: it says
     // so, not that an original was kept.
     let h = Home::new();
     let plugin = h.oc_plugin();
@@ -2278,8 +2313,8 @@ fn cli_opencode_says_a_plugin_was_restored() {
 #[test]
 fn cli_opencode_says_where_an_edited_plugin_went() {
     let h = Home::new();
-    let legacy = h.oc_dir().join("plugin/agentmail.js");
-    write(&legacy, &oc_edited_plugin("/old/agentmail"));
+    let legacy = h.oc_dir().join("plugin/agent-communication.js");
+    write(&legacy, &oc_edited_plugin("/old/agent-communication"));
     let out = cli(&h)
         .env_remove("XDG_CONFIG_HOME")
         .args(["install", "--harness", "opencode", "--dry-run"])
@@ -2331,12 +2366,12 @@ fn cli_opencode_says_where_an_edited_plugin_went() {
 #[test]
 fn opencode_plugin_in_other_scope_is_noted() {
     // opencode runs one plugin per id, the first loaded, and loads the user
-    // scope before the project: the user's agentmail plugin shadows the
+    // scope before the project: the user's agent-communication plugin shadows the
     // project's.
     let h = Home::new();
     let env = h.env(&[]);
-    let dev = "/home/dev/agentmail/target/debug/agentmail";
-    let project = h.proj().join(".opencode/plugins/agentmail.js");
+    let dev = "/home/dev/agent-communication/target/debug/agent-communication";
+    let project = h.proj().join(".opencode/plugins/agent-communication.js");
     let user = h.oc_plugin().display().to_string();
     // Nothing in the other scope: no note.
     assert!(
@@ -2360,7 +2395,8 @@ fn opencode_plugin_in_other_scope_is_noted() {
     assert!(notes[0].contains(BIN), "{notes:?}");
     install(&oc_opts(true, dev), &env);
     // A user install for another binary than the project's: it wins there.
-    let notes = install::notes(&oc_opts(false, "/usr/bin/agentmail"), &env, true).unwrap();
+    let notes =
+        install::notes(&oc_opts(false, "/usr/bin/agent-communication"), &env, true).unwrap();
     assert_eq!(notes.len(), 1, "{notes:?}");
     assert!(
         notes[0].contains(&project.display().to_string()),
@@ -2390,10 +2426,10 @@ fn opencode_plugin_in_other_scope_is_noted() {
     );
     // The other scope's `plugin/` counts too, and a plugin there whose
     // binary cannot be read differs from any.
-    let legacy = h.oc_dir().join("plugin/agentmail.js");
+    let legacy = h.oc_dir().join("plugin/agent-communication.js");
     write(
         &legacy,
-        "// agentmail for opencode (an old one)\nexport default {};\n",
+        "// agent-communication for opencode (an old one)\nexport default {};\n",
     );
     let notes = install::notes(&oc_opts(true, dev), &env, true).unwrap();
     assert_eq!(notes.len(), 1, "{notes:?}");
@@ -2413,7 +2449,10 @@ fn opencode_plugin_in_other_scope_is_noted() {
 fn cli_opencode_notes_plugin_in_other_scope() {
     let h = Home::new();
     let user = h.oc_plugin();
-    write(&user, &oc_plugin_text("/somewhere/else/agentmail"));
+    write(
+        &user,
+        &oc_plugin_text("/somewhere/else/agent-communication"),
+    );
     let out = cli(&h)
         .env_remove("XDG_CONFIG_HOME")
         .args(["install", "--harness", "opencode", "--project"])
@@ -2428,7 +2467,10 @@ fn cli_opencode_notes_plugin_in_other_scope() {
         .find(|l| l.starts_with("note: "))
         .unwrap_or_else(|| panic!("{out}"));
     assert!(note.contains(&user.display().to_string()), "{out}");
-    assert!(note.contains("/somewhere/else/agentmail"), "{out}");
+    assert!(
+        note.contains("/somewhere/else/agent-communication"),
+        "{out}"
+    );
     let out = cli(&h)
         .env_remove("XDG_CONFIG_HOME")
         .args(["--json", "install", "--harness", "opencode", "--project"])
@@ -2467,23 +2509,23 @@ impl Home {
     }
 
     fn kiro_hooks(&self) -> PathBuf {
-        self.kiro_dir().join("hooks/agentmail.json")
+        self.kiro_dir().join("hooks/agent-communication.json")
     }
 }
 
 fn kiro_hook(bin: &str, trigger: &str, event: &str) -> Value {
     json!({
-        "name": format!("agentmail-{event}"),
+        "name": format!("agent-communication-{event}"),
         "trigger": trigger,
         "action": {"type": "command", "command": format!("{bin} hook {event} --harness kiro")},
         "timeout": 10
     })
 }
 
-/// The hooks file agentmail installs for kiro, with `--kiro-wake` or not.
+/// The hooks file agent-communication installs for kiro, with `--kiro-wake` or not.
 fn kiro_expected_hooks(bin: &str, wake: bool) -> Value {
     let pre = json!({
-        "name": "agentmail-pre-tool",
+        "name": "agent-communication-pre-tool",
         "trigger": "PreToolUse",
         "matcher": ".*",
         "action": {"type": "command", "command": format!("{bin} hook pre-tool --harness kiro")},
@@ -2492,7 +2534,7 @@ fn kiro_expected_hooks(bin: &str, wake: bool) -> Value {
     let stop = match wake {
         false => kiro_hook(bin, "Stop", "stop"),
         true => json!({
-            "name": "agentmail-stop",
+            "name": "agent-communication-stop",
             "trigger": "Stop",
             "action": {"type": "command", "command": format!("{bin} hook stop --harness kiro --wake")},
             "timeout": 0
@@ -2532,9 +2574,13 @@ fn kiro_install_mcp_merge() {
     let env = h.env(&[]);
     install(&kiro_opts(false, BIN), &env);
     let v = read_json(&h.kiro_mcp());
-    assert_eq!(v["mcpServers"]["agentmail"], kiro_server(BIN), "{v}");
+    assert_eq!(
+        v["mcpServers"]["agent-communication"],
+        kiro_server(BIN),
+        "{v}"
+    );
     assert_eq!(v["mcpServers"]["gmail"]["url"], "http://127.0.0.1:3016/mcp");
-    // Foreign bytes are kept as written: only agentmail's entry is new.
+    // Foreign bytes are kept as written: only agent-communication's entry is new.
     let text = read(&h.kiro_mcp());
     assert!(
         text.starts_with("{\n    \"mcpServers\": {\n      \"gmail\": {"),
@@ -2566,31 +2612,34 @@ fn kiro_wake_installs_the_waiting_stop_hook() {
     assert_eq!(read_json(&h.kiro_hooks()), kiro_expected_hooks(BIN, true));
     // The MCP server registers kiro agents with `wake` on by default.
     let mut server = kiro_server(BIN);
-    server["env"] = json!({"AGENTMAIL_KIRO_WAKE": "1"});
-    assert_eq!(read_json(&h.kiro_mcp())["mcpServers"]["agentmail"], server);
+    server["env"] = json!({"AGENT_COMMUNICATION_KIRO_WAKE": "1"});
+    assert_eq!(
+        read_json(&h.kiro_mcp())["mcpServers"]["agent-communication"],
+        server
+    );
     assert!(install::plan_install(&wake, &env).unwrap().is_empty());
 
     // Installing again without it takes waking out, keeping the user's env.
     let mut v = read_json(&h.kiro_mcp());
-    v["mcpServers"]["agentmail"]["env"]["RUST_LOG"] = json!("debug");
+    v["mcpServers"]["agent-communication"]["env"]["RUST_LOG"] = json!("debug");
     write(&h.kiro_mcp(), &serde_json::to_string_pretty(&v).unwrap());
     install(&kiro_opts(false, BIN), &env);
     assert_eq!(read_json(&h.kiro_hooks()), kiro_expected_hooks(BIN, false));
     assert_eq!(
-        read_json(&h.kiro_mcp())["mcpServers"]["agentmail"]["env"],
+        read_json(&h.kiro_mcp())["mcpServers"]["agent-communication"]["env"],
         json!({"RUST_LOG": "debug"})
     );
     // Without anything else in it, `env` goes with the variable.
     install(&wake, &env);
     let mut v = read_json(&h.kiro_mcp());
-    v["mcpServers"]["agentmail"]["env"]
+    v["mcpServers"]["agent-communication"]["env"]
         .as_object_mut()
         .unwrap()
         .remove("RUST_LOG");
     write(&h.kiro_mcp(), &serde_json::to_string_pretty(&v).unwrap());
     install(&kiro_opts(false, BIN), &env);
     assert_eq!(
-        read_json(&h.kiro_mcp())["mcpServers"]["agentmail"],
+        read_json(&h.kiro_mcp())["mcpServers"]["agent-communication"],
         kiro_server(BIN)
     );
 }
@@ -2617,11 +2666,11 @@ fn kiro_hooks_file_keeps_foreign_hooks_and_fields() {
     let v = read_json(&h.kiro_hooks());
     let hooks = v["hooks"].as_array().unwrap();
     assert_eq!(hooks[0], foreign["hooks"][0]);
-    // agentmail's stop hook is updated in place, keeping the user's keys.
+    // agent-communication's stop hook is updated in place, keeping the user's keys.
     assert_eq!(hooks[1]["description"], "kept", "{v}");
     assert_eq!(hooks[1]["enabled"], true, "{v}");
     assert_eq!(hooks[1]["timeout"], 10, "{v}");
-    assert_eq!(hooks[1]["name"], "agentmail-stop", "{v}");
+    assert_eq!(hooks[1]["name"], "agent-communication-stop", "{v}");
     assert_eq!(hooks.len(), 5, "{v}");
     uninstall(&kiro_opts(false, BIN), &env);
     let v = read_json(&h.kiro_hooks());
@@ -2638,16 +2687,19 @@ fn kiro_respects_kiro_home() {
     let env = h.env(&[("KIRO_HOME", kh.to_str().unwrap())]);
     install(&kiro_opts(false, BIN), &env);
     assert_eq!(
-        read_json(&kh.join("settings/mcp.json"))["mcpServers"]["agentmail"],
+        read_json(&kh.join("settings/mcp.json"))["mcpServers"]["agent-communication"],
         kiro_server(BIN)
     );
     assert_eq!(
-        read_json(&kh.join("hooks/agentmail.json")),
+        read_json(&kh.join("hooks/agent-communication.json")),
         kiro_expected_hooks(BIN, false)
     );
     assert!(!h.kiro_dir().exists());
     uninstall(&kiro_opts(false, BIN), &env);
-    assert!(!kh.exists(), "agentmail created it and removes it again");
+    assert!(
+        !kh.exists(),
+        "agent-communication created it and removes it again"
+    );
 }
 
 #[test]
@@ -2656,8 +2708,11 @@ fn kiro_project_scope() {
     let env = h.env(&[]);
     install(&kiro_opts(true, BIN), &env);
     let mcp = h.proj().join(".kiro/settings/mcp.json");
-    let hooks = h.proj().join(".kiro/hooks/agentmail.json");
-    assert_eq!(read_json(&mcp)["mcpServers"]["agentmail"], kiro_server(BIN));
+    let hooks = h.proj().join(".kiro/hooks/agent-communication.json");
+    assert_eq!(
+        read_json(&mcp)["mcpServers"]["agent-communication"],
+        kiro_server(BIN)
+    );
     assert_eq!(read_json(&hooks), kiro_expected_hooks(BIN, false));
     assert!(!h.kiro_dir().exists());
     uninstall(&kiro_opts(true, BIN), &env);
@@ -2676,10 +2731,13 @@ fn kiro_idempotent() {
             .is_empty()
     );
     // A reinstall from another path replaces the entries, never adds.
-    install(&kiro_opts(false, "/usr/local/bin/agentmail"), &env);
+    install(
+        &kiro_opts(false, "/usr/local/bin/agent-communication"),
+        &env,
+    );
     assert_eq!(
         read_json(&h.kiro_hooks()),
-        kiro_expected_hooks("/usr/local/bin/agentmail", false)
+        kiro_expected_hooks("/usr/local/bin/agent-communication", false)
     );
 }
 
@@ -2707,7 +2765,7 @@ fn kiro_uninstall() {
 
 #[test]
 fn kiro_hooks_file_left_with_no_hooks_is_removed() {
-    // A hooks file agentmail did not create (its hooks pasted by hand)
+    // A hooks file agent-communication did not create (its hooks pasted by hand)
     // that held nothing else: kiro rejects a hooks file without hooks
     // (`{}` too), so the file goes, its text kept in the backup.
     let h = Home::new();
@@ -2734,9 +2792,9 @@ fn kiro_hooks_file_left_with_no_hooks_is_removed() {
 }
 
 #[test]
-fn kiro_uninstall_leaves_hooks_files_without_agentmail_alone() {
-    // A hooks file with no agentmail hooks (empty, or only the user's) is
-    // not agentmail's to touch: no change, the file byte-identical.
+fn kiro_uninstall_leaves_hooks_files_without_agent_communication_alone() {
+    // A hooks file with no agent-communication hooks (empty, or only the user's) is
+    // not agent-communication's to touch: no change, the file byte-identical.
     let foreign = r#"{
   "version": "v1",
   "hooks": [{"name": "mine", "trigger": "Stop", "action": {"type": "command", "command": "echo hi"}}]
@@ -2804,7 +2862,7 @@ fn kiro_v3_warning_printed() {
     let out = String::from_utf8(out).unwrap();
     assert!(
         out.lines().any(
-            |l| l == "kiro-cli: agentmail supports the V3 engine only — run kiro-cli chat --v3"
+            |l| l == "kiro-cli: agent-communication supports the V3 engine only — run kiro-cli chat --v3"
         ),
         "{out}"
     );
@@ -2879,12 +2937,12 @@ fn readme_unit() -> String {
 
 #[test]
 fn service_unit_content_matches_docs() {
-    let bin = Path::new("/opt/agentmail/bin/agentmail");
+    let bin = Path::new("/opt/agent-communication/bin/agent-communication");
     let want: String = readme_unit()
         .lines()
         .map(|l| {
             if l.starts_with("ExecStart=") {
-                "ExecStart=/opt/agentmail/bin/agentmail daemon run --wait-for-lock\n".to_string()
+                "ExecStart=/opt/agent-communication/bin/agent-communication daemon run --wait-for-lock\n".to_string()
             } else {
                 format!("{l}\n")
             }
@@ -2905,8 +2963,8 @@ fn service_unit_quotes_the_binary_for_systemd() {
             .to_string()
     };
     assert_eq!(
-        exec("/a b/agentmail"),
-        "ExecStart=\"/a b/agentmail\" daemon run --wait-for-lock"
+        exec("/a b/agent-communication"),
+        "ExecStart=\"/a b/agent-communication\" daemon run --wait-for-lock"
     );
     assert_eq!(
         exec("/a%b$c/agent\"mail"),
@@ -2914,11 +2972,11 @@ fn service_unit_quotes_the_binary_for_systemd() {
     );
     // systemd expands no `$` in the executable path, so it stays single.
     assert_eq!(
-        exec("/a$b/agentmail"),
-        "ExecStart=/a$b/agentmail daemon run --wait-for-lock"
+        exec("/a$b/agent-communication"),
+        "ExecStart=/a$b/agent-communication daemon run --wait-for-lock"
     );
-    assert!(install::service::unit(Path::new("relative/agentmail")).is_err());
-    assert!(install::service::unit(Path::new("/a\nb/agentmail")).is_err());
+    assert!(install::service::unit(Path::new("relative/agent-communication")).is_err());
+    assert!(install::service::unit(Path::new("/a\nb/agent-communication")).is_err());
 }
 
 /// A temporary home for `install --service`: a fake `systemctl` that logs
@@ -2955,13 +3013,13 @@ case "$*" in
 FragmentPath=
 }"; exit 0 ;;
 esac
-if env -u AGENTMAIL_DATA_DIR -u AGENTMAIL_SOCKET "$AGENTMAIL_TEST_BIN" daemon status >/dev/null 2>&1; then up=up; else up=down; fi
+if env -u AGENT_COMMUNICATION_DATA_DIR -u AGENT_COMMUNICATION_SOCKET "$AGENT_COMMUNICATION_TEST_BIN" daemon status >/dev/null 2>&1; then up=up; else up=down; fi
 echo "$* [$up]" >> "$FAKE_LOG"
 case "$*" in
   *disable*) if [ -n "$FAKE_RO" ]; then chmod 555 "$FAKE_RO"; fi ;;
   *"enable --now"*)
     if [ -n "$FAKE_START_ON_ENABLE" ]; then
-      env -u AGENTMAIL_DATA_DIR -u AGENTMAIL_SOCKET "$AGENTMAIL_TEST_BIN" daemon start >/dev/null 2>&1
+      env -u AGENT_COMMUNICATION_DATA_DIR -u AGENT_COMMUNICATION_SOCKET "$AGENT_COMMUNICATION_TEST_BIN" daemon start >/dev/null 2>&1
     fi ;;
 esac
 if [ -n "$FAKE_FAIL" ]; then
@@ -2999,7 +3057,8 @@ exit 0
     }
 
     fn unit(&self) -> PathBuf {
-        self.config().join("systemd/user/agentmail.service")
+        self.config()
+            .join("systemd/user/agent-communication.service")
     }
 
     fn log(&self) -> Vec<String> {
@@ -3011,7 +3070,7 @@ exit 0
     }
 
     fn cli(&self) -> Command {
-        self.cli_as(Path::new(env!("CARGO_BIN_EXE_agentmail")))
+        self.cli_as(Path::new(env!("CARGO_BIN_EXE_agent-communication")))
     }
 
     /// The CLI, run as `prog`. The daemon's location is the default one
@@ -3024,11 +3083,14 @@ exit 0
             .current_dir(self.h.proj())
             .timeout(Duration::from_secs(30))
             .env("XDG_CONFIG_HOME", self.config())
-            .env("AGENTMAIL_SYSTEMCTL", d.join("systemctl"))
-            .env("AGENTMAIL_TEST_BIN", env!("CARGO_BIN_EXE_agentmail"))
+            .env("AGENT_COMMUNICATION_SYSTEMCTL", d.join("systemctl"))
+            .env(
+                "AGENT_COMMUNICATION_TEST_BIN",
+                env!("CARGO_BIN_EXE_agent-communication"),
+            )
             .env("FAKE_LOG", d.join("log"))
-            .env_remove("AGENTMAIL_DATA_DIR")
-            .env_remove("AGENTMAIL_SOCKET")
+            .env_remove("AGENT_COMMUNICATION_DATA_DIR")
+            .env_remove("AGENT_COMMUNICATION_SOCKET")
             .env_remove("XDG_DATA_HOME")
             .env_remove("XDG_RUNTIME_DIR")
             .env_remove("FAKE_STATE")
@@ -3048,7 +3110,7 @@ exit 0
     }
 
     /// What `systemctl --user show` says of the service running on
-    /// agentmail's unit as installed for this binary, reloaded since.
+    /// agent-communication's unit as installed for this binary, reloaded since.
     fn loaded(&self) -> String {
         format!(
             "LoadState=loaded\nFragmentPath={}\nNeedDaemonReload=no\nExecStart={{ path={} ; \
@@ -3060,13 +3122,13 @@ exit 0
         )
     }
 
-    /// The CLI with a private daemon location, as `AGENTMAIL_DATA_DIR` and
-    /// `AGENTMAIL_SOCKET` set it.
+    /// The CLI with a private daemon location, as `AGENT_COMMUNICATION_DATA_DIR` and
+    /// `AGENT_COMMUNICATION_SOCKET` set it.
     fn private_cli(&self) -> Command {
         let d = self.h.dir.path();
         let mut c = self.cli();
-        c.env("AGENTMAIL_DATA_DIR", d.join("data"))
-            .env("AGENTMAIL_SOCKET", d.join("sock"));
+        c.env("AGENT_COMMUNICATION_DATA_DIR", d.join("data"))
+            .env("AGENT_COMMUNICATION_SOCKET", d.join("sock"));
         c
     }
 
@@ -3075,8 +3137,8 @@ exit 0
     }
 
     /// The default location's lock record.
-    fn lock_record(&self) -> Option<agentmail::paths::LockRecord> {
-        agentmail::paths::Paths::from_vars(|k| {
+    fn lock_record(&self) -> Option<agent_communication::paths::LockRecord> {
+        agent_communication::paths::Paths::from_vars(|k| {
             (k == "HOME").then(|| self.h.home().into_os_string())
         })
         .unwrap()
@@ -3086,11 +3148,11 @@ exit 0
     /// A supervised daemon at the default location, as the service runs
     /// (`daemon run --wait-for-lock`), once it serves.
     fn supervised(&self) -> Supervised {
-        let child = std::process::Command::new(env!("CARGO_BIN_EXE_agentmail"))
+        let child = std::process::Command::new(env!("CARGO_BIN_EXE_agent-communication"))
             .args(["daemon", "run", "--wait-for-lock"])
             .env("HOME", self.h.home())
-            .env_remove("AGENTMAIL_DATA_DIR")
-            .env_remove("AGENTMAIL_SOCKET")
+            .env_remove("AGENT_COMMUNICATION_DATA_DIR")
+            .env_remove("AGENT_COMMUNICATION_SOCKET")
             .env_remove("XDG_DATA_HOME")
             .env_remove("XDG_RUNTIME_DIR")
             .stdout(std::process::Stdio::null())
@@ -3125,7 +3187,7 @@ impl Drop for ServiceHome {
 }
 
 fn bin_path() -> String {
-    env!("CARGO_BIN_EXE_agentmail").to_string()
+    env!("CARGO_BIN_EXE_agent-communication").to_string()
 }
 
 #[test]
@@ -3148,7 +3210,7 @@ fn service_calls_systemctl_in_order() {
     // The command run is shown as run: this binary, at the default location.
     assert!(
         out.contains(&format!(
-            "ran env -u AGENTMAIL_DATA_DIR -u AGENTMAIL_SOCKET {} daemon stop",
+            "ran env -u AGENT_COMMUNICATION_DATA_DIR -u AGENT_COMMUNICATION_SOCKET {} daemon stop",
             bin_path()
         )),
         "{out}"
@@ -3165,7 +3227,7 @@ fn service_calls_systemctl_in_order() {
         [
             "--user is-system-running [up]",
             "--user daemon-reload [up]",
-            "--user enable --now agentmail [up]",
+            "--user enable --now agent-communication [up]",
         ]
     );
     let ran: Vec<&str> = out.lines().filter(|l| l.starts_with("ran ")).collect();
@@ -3197,7 +3259,7 @@ fn service_calls_systemctl_in_order() {
         [
             "--user is-system-running [up]",
             "--user daemon-reload [up]",
-            "--user enable --now agentmail [up]",
+            "--user enable --now agent-communication [up]",
         ]
     );
     assert!(s.daemon_up(s.cli()));
@@ -3236,10 +3298,10 @@ fn service_unit_runs_the_binary_by_the_path_invoked() {
     // A symlink to the binary (say, to a versioned install) stays in the
     // unit, so that it follows the link when it is updated.
     let s = ServiceHome::new();
-    let link = s.h.dir.path().join("bin/agentmail");
+    let link = s.h.dir.path().join("bin/agent-communication");
     std::fs::create_dir_all(link.parent().unwrap()).unwrap();
     #[cfg(unix)]
-    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_agentmail"), &link).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_agent-communication"), &link).unwrap();
     s.cli().args(["daemon", "start"]).assert().success();
     let out = s
         .cli_as(&link)
@@ -3276,12 +3338,14 @@ fn service_notes_the_location_overrides() {
         .clone();
     let out = String::from_utf8(out).unwrap();
     assert!(
-        out.contains("note: AGENTMAIL_DATA_DIR and AGENTMAIL_SOCKET are set here"),
+        out.contains(
+            "note: AGENT_COMMUNICATION_DATA_DIR and AGENT_COMMUNICATION_SOCKET are set here"
+        ),
         "{out}"
     );
     let out = s
         .cli()
-        .env("AGENTMAIL_SOCKET", s.h.dir.path().join("sock"))
+        .env("AGENT_COMMUNICATION_SOCKET", s.h.dir.path().join("sock"))
         .args(["--json", "install", "--service", "--dry-run"])
         .assert()
         .success()
@@ -3290,19 +3354,28 @@ fn service_notes_the_location_overrides() {
         .clone();
     let v: Value = serde_json::from_slice(&out).unwrap();
     let note = v["notes"][0].as_str().unwrap();
-    assert!(note.starts_with("AGENTMAIL_SOCKET is set here"), "{v}");
+    assert!(
+        note.starts_with("AGENT_COMMUNICATION_SOCKET is set here"),
+        "{v}"
+    );
     // It says how to give the service the same, in a drop-in that install
     // and uninstall leave alone, with the value as a unit takes it.
-    assert!(note.contains("systemctl --user edit agentmail"), "{v}");
+    assert!(
+        note.contains("systemctl --user edit agent-communication"),
+        "{v}"
+    );
     assert!(
         note.contains(&format!(
-            "Environment=\"AGENTMAIL_SOCKET={}\"",
+            "Environment=\"AGENT_COMMUNICATION_SOCKET={}\"",
             s.h.dir.path().join("sock").display()
         )),
         "{v}"
     );
-    assert!(note.contains("agentmail.service.d/override.conf"), "{v}");
-    assert!(!note.contains("AGENTMAIL_DATA_DIR"), "{v}");
+    assert!(
+        note.contains("agent-communication.service.d/override.conf"),
+        "{v}"
+    );
+    assert!(!note.contains("AGENT_COMMUNICATION_DATA_DIR"), "{v}");
 }
 
 #[test]
@@ -3322,7 +3395,7 @@ fn service_dry_run_changes_and_runs_nothing() {
         "{out}"
     );
     assert!(
-        out.contains("systemctl --user enable --now agentmail"),
+        out.contains("systemctl --user enable --now agent-communication"),
         "{out}"
     );
     assert!(!s.unit().exists());
@@ -3357,7 +3430,7 @@ fn service_dry_run_changes_and_runs_nothing() {
     assert!(!out.contains("try-restart"), "{out}");
     assert!(!out.contains("daemon stop"), "{out}");
     assert!(
-        out.contains("systemctl --user enable --now agentmail"),
+        out.contains("systemctl --user enable --now agent-communication"),
         "{out}"
     );
     let out = dry(true);
@@ -3386,17 +3459,20 @@ fn service_notes_a_manager_with_other_default_locations() {
         .clone();
     let v: Value = serde_json::from_slice(&out).unwrap();
     let note = v["notes"][0].as_str().unwrap();
-    assert!(note.contains("socket /run/user/4242/agentmail.sock"), "{v}");
+    assert!(
+        note.contains("socket /run/user/4242/agent-communication.sock"),
+        "{v}"
+    );
     assert!(!note.contains("data directory"), "{v}");
     assert!(note.contains("gets XDG_RUNTIME_DIR differently"), "{v}");
-    // An AGENTMAIL_SOCKET the manager has (imported, say) is named as the
+    // An AGENT_COMMUNICATION_SOCKET the manager has (imported, say) is named as the
     // cause, not the XDG variables.
     let out = s
         .cli()
         .env(
             "FAKE_ENV",
             format!(
-                "AGENTMAIL_SOCKET=/run/elsewhere.sock\nXDG_CONFIG_HOME={}\n",
+                "AGENT_COMMUNICATION_SOCKET=/run/elsewhere.sock\nXDG_CONFIG_HOME={}\n",
                 s.config().display()
             ),
         )
@@ -3409,7 +3485,10 @@ fn service_notes_a_manager_with_other_default_locations() {
     let v: Value = serde_json::from_slice(&out).unwrap();
     let note = v["notes"][0].as_str().unwrap();
     assert!(note.contains("socket /run/elsewhere.sock"), "{v}");
-    assert!(note.contains("gets AGENTMAIL_SOCKET differently"), "{v}");
+    assert!(
+        note.contains("gets AGENT_COMMUNICATION_SOCKET differently"),
+        "{v}"
+    );
     assert!(!note.contains("XDG"), "{v}");
     // Matching values: no note.
     let run = s.h.dir.path().join("run");
@@ -3455,7 +3534,7 @@ fn service_notes_a_manager_with_other_default_locations() {
         v["notes"][0]
             .as_str()
             .unwrap()
-            .contains("socket /run/user/4242/agentmail.sock"),
+            .contains("socket /run/user/4242/agent-communication.sock"),
         "{v}"
     );
     // One of a variable the location depends on cannot be read: no note.
@@ -3496,14 +3575,19 @@ fn service_failure_after_writing_the_unit_says_so() {
         "{err}"
     );
     assert!(
-        err.contains("run `agentmail install --service` again"),
+        err.contains("run `agent-communication install --service` again"),
         "{err}"
     );
     assert!(err.contains("Failed to enable"), "{err}");
     assert!(s.unit().exists());
     // Running it again finishes it.
     s.cli().args(["install", "--service"]).assert().success();
-    assert!(s.log().last().unwrap().contains("enable --now agentmail"));
+    assert!(
+        s.log()
+            .last()
+            .unwrap()
+            .contains("enable --now agent-communication")
+    );
 
     // Uninstall: a failed disable keeps the unit.
     let out = s
@@ -3603,7 +3687,7 @@ fn service_uninstall() {
         s.log()[n..],
         [
             "--user is-system-running [down]",
-            "--user disable --now agentmail [down]",
+            "--user disable --now agent-communication [down]",
             "--user daemon-reload [down]",
         ]
     );
@@ -3638,7 +3722,7 @@ fn service_uninstall_cleans_up_after_a_unit_removed_by_hand() {
         .unit()
         .parent()
         .unwrap()
-        .join("default.target.wants/agentmail.service");
+        .join("default.target.wants/agent-communication.service");
     std::fs::create_dir_all(link.parent().unwrap()).unwrap();
     #[cfg(unix)]
     std::os::unix::fs::symlink(s.unit(), &link).unwrap();
@@ -3655,7 +3739,10 @@ fn service_uninstall_cleans_up_after_a_unit_removed_by_hand() {
         .stdout
         .clone();
     let out = String::from_utf8(out).unwrap();
-    assert!(out.contains("systemctl --user stop agentmail"), "{out}");
+    assert!(
+        out.contains("systemctl --user stop agent-communication"),
+        "{out}"
+    );
     assert!(out.contains(&format!("rm {}", link.display())), "{out}");
     assert!(std::fs::symlink_metadata(&link).is_ok());
     // Only the read-only check that systemd is usable runs.
@@ -3677,7 +3764,7 @@ fn service_uninstall_cleans_up_after_a_unit_removed_by_hand() {
         s.log()[n..],
         [
             "--user is-system-running [down]",
-            "--user stop agentmail [down]",
+            "--user stop agent-communication [down]",
             "--user daemon-reload [down]",
         ]
     );
@@ -3710,21 +3797,21 @@ fn service_uninstall_cleans_up_after_a_unit_removed_by_hand() {
 }
 
 #[test]
-fn service_uninstall_leaves_a_service_agentmail_did_not_install() {
-    // No unit of agentmail's, but a user service named agentmail runs from
+fn service_uninstall_leaves_a_service_agent_communication_did_not_install() {
+    // No unit of agent-communication's, but a user service named agent-communication runs from
     // elsewhere (a package's, say), enabled with a link in the config
     // directory: neither is touched.
     let s = ServiceHome::new();
-    let theirs = s.h.dir.path().join("pkg/agentmail.service");
+    let theirs = s.h.dir.path().join("pkg/agent-communication.service");
     write(
         &theirs,
-        "[Service]\nExecStart=/usr/bin/agentmail daemon run\n",
+        "[Service]\nExecStart=/usr/bin/agent-communication daemon run\n",
     );
     let link = s
         .unit()
         .parent()
         .unwrap()
-        .join("default.target.wants/agentmail.service");
+        .join("default.target.wants/agent-communication.service");
     std::fs::create_dir_all(link.parent().unwrap()).unwrap();
     #[cfg(unix)]
     std::os::unix::fs::symlink(&theirs, &link).unwrap();
@@ -3739,7 +3826,7 @@ fn service_uninstall_leaves_a_service_agentmail_did_not_install() {
         }
         let out = c.assert().success().get_output().stdout.clone();
         let out = String::from_utf8(out).unwrap();
-        assert!(!out.contains("stop agentmail"), "{out}");
+        assert!(!out.contains("stop agent-communication"), "{out}");
         assert!(!out.contains("rm "), "{out}");
         assert!(out.contains("left alone"), "{out}");
         assert!(out.contains(&theirs.display().to_string()), "{out}");
@@ -3747,7 +3834,7 @@ fn service_uninstall_leaves_a_service_agentmail_did_not_install() {
     assert_eq!(std::fs::read_link(&link).unwrap(), theirs);
     assert!(s.log().is_empty(), "{:?}", s.log());
 
-    // A service still loaded from agentmail's (removed) unit is agentmail's.
+    // A service still loaded from agent-communication's (removed) unit is agent-communication's.
     std::fs::remove_file(&link).unwrap();
     let n = s.log().len();
     s.cli()
@@ -3763,7 +3850,7 @@ fn service_uninstall_leaves_a_service_agentmail_did_not_install() {
         s.log()[n..],
         [
             "--user is-system-running [down]",
-            "--user stop agentmail [down]",
+            "--user stop agent-communication [down]",
             "--user daemon-reload [down]",
         ]
     );
@@ -3885,12 +3972,12 @@ fn service_restarts_a_running_service_whose_unit_was_removed() {
     assert!(
         s.log()
             .iter()
-            .any(|l| l.starts_with("--user try-restart agentmail")),
+            .any(|l| l.starts_with("--user try-restart agent-communication")),
         "{:?}",
         s.log()
     );
     assert!(
-        out.contains("ran systemctl --user try-restart agentmail"),
+        out.contains("ran systemctl --user try-restart agent-communication"),
         "{out}"
     );
     // A dry run lists it too.
@@ -3905,7 +3992,7 @@ fn service_restarts_a_running_service_whose_unit_was_removed() {
         .stdout
         .clone();
     let out = String::from_utf8(out).unwrap();
-    assert!(out.contains("try-restart agentmail"), "{out}");
+    assert!(out.contains("try-restart agent-communication"), "{out}");
     // Not running: no restart.
     let s = ServiceHome::new();
     s.cli().args(["install", "--service"]).assert().success();
@@ -3923,16 +4010,18 @@ fn service_failure_to_stop_the_on_demand_daemon_says_so() {
     // so `daemon stop` refuses: the service is running all the same.
     let s = ServiceHome::new();
     let d = s.h.dir.path();
-    let default_sock = s.h.home().join(".local/share/agentmail/agentmail.sock");
+    let default_sock =
+        s.h.home()
+            .join(".local/share/agent-communication/agent-communication.sock");
     let a = || {
         let mut c = s.cli();
-        c.env("AGENTMAIL_SOCKET", d.join("sock-a"));
+        c.env("AGENT_COMMUNICATION_SOCKET", d.join("sock-a"));
         c
     };
     let b = || {
         let mut c = s.cli();
-        c.env("AGENTMAIL_DATA_DIR", d.join("data-b"))
-            .env("AGENTMAIL_SOCKET", &default_sock);
+        c.env("AGENT_COMMUNICATION_DATA_DIR", d.join("data-b"))
+            .env("AGENT_COMMUNICATION_SOCKET", &default_sock);
         c
     };
     a().args(["daemon", "start"]).assert().success();
@@ -3952,7 +4041,7 @@ fn service_failure_to_stop_the_on_demand_daemon_says_so() {
         err.contains("the service is enabled and running, but stopping the daemon"),
         "{err}"
     );
-    assert!(err.contains("agentmail daemon stop"), "{err}");
+    assert!(err.contains("agent-communication daemon stop"), "{err}");
     assert!(err.contains("not for this data directory"), "{err}");
     assert!(!err.contains("may not be running"), "{err}");
     assert!(s.unit().exists());
@@ -3963,12 +4052,12 @@ fn service_replaces_a_hand_written_unit_keeping_it() {
     let s = ServiceHome::new();
     write(
         &s.unit(),
-        "[Service]\nExecStart=/old/agentmail daemon run\n",
+        "[Service]\nExecStart=/old/agent-communication daemon run\n",
     );
     s.cli().args(["install", "--service"]).assert().success();
     assert_eq!(
         read(&bak(&s.unit())),
-        "[Service]\nExecStart=/old/agentmail daemon run\n"
+        "[Service]\nExecStart=/old/agent-communication daemon run\n"
     );
     let out = s
         .cli()
@@ -4023,7 +4112,7 @@ fn service_no_systemd_errors() {
         "{err}"
     );
     assert!(
-        err.contains("systemctl --user enable --now agentmail"),
+        err.contains("systemctl --user enable --now agent-communication"),
         "{err}"
     );
     assert!(!s.unit().exists());
@@ -4032,7 +4121,7 @@ fn service_no_systemd_errors() {
     // Uninstall says how to remove it by hand.
     write(
         &s.unit(),
-        &install::service::unit(Path::new("/x/agentmail")).unwrap(),
+        &install::service::unit(Path::new("/x/agent-communication")).unwrap(),
     );
     let out = s
         .cli()
@@ -4046,7 +4135,7 @@ fn service_no_systemd_errors() {
         .clone();
     let err = String::from_utf8(out).unwrap();
     assert!(
-        err.contains("systemctl --user disable --now agentmail"),
+        err.contains("systemctl --user disable --now agent-communication"),
         "{err}"
     );
     // The marker goes too, and the backup is explained.
@@ -4101,7 +4190,7 @@ fn service_dry_run_notes_no_systemd() {
 #[test]
 fn service_degraded_systemd_is_usable() {
     // `is-system-running` exits non-zero when some unit failed, but the
-    // manager is up and can run agentmail's.
+    // manager is up and can run agent-communication's.
     let s = ServiceHome::new();
     s.cli()
         .env("FAKE_STATE", "degraded")
@@ -4123,7 +4212,7 @@ fn service_respects_home_without_xdg_config() {
         .success();
     assert!(
         s.h.home()
-            .join(".config/systemd/user/agentmail.service")
+            .join(".config/systemd/user/agent-communication.service")
             .exists()
     );
     // A relative XDG_CONFIG_HOME, which systemd ignores, is ignored too.
@@ -4136,7 +4225,7 @@ fn service_respects_home_without_xdg_config() {
         .success();
     assert!(
         s.h.home()
-            .join(".config/systemd/user/agentmail.service")
+            .join(".config/systemd/user/agent-communication.service")
             .exists()
     );
     assert!(!s.h.proj().join("rel").exists());
@@ -4161,7 +4250,7 @@ fn service_restarts_a_replaced_unit() {
     let s = ServiceHome::new();
     write(
         &s.unit(),
-        "[Service]\nExecStart=/old/agentmail daemon run\n",
+        "[Service]\nExecStart=/old/agent-communication daemon run\n",
     );
     s.cli()
         .env("FAKE_ACTIVE", "active")
@@ -4173,8 +4262,8 @@ fn service_restarts_a_replaced_unit() {
         [
             "--user is-system-running [down]",
             "--user daemon-reload [down]",
-            "--user enable --now agentmail [down]",
-            "--user try-restart agentmail [down]",
+            "--user enable --now agent-communication [down]",
+            "--user try-restart agent-communication [down]",
         ]
     );
     // A service that is not running is started on the new unit by
@@ -4182,7 +4271,7 @@ fn service_restarts_a_replaced_unit() {
     let s = ServiceHome::new();
     write(
         &s.unit(),
-        "[Service]\nExecStart=/old/agentmail daemon run\n",
+        "[Service]\nExecStart=/old/agent-communication daemon run\n",
     );
     s.cli().args(["install", "--service"]).assert().success();
     assert_eq!(
@@ -4190,7 +4279,7 @@ fn service_restarts_a_replaced_unit() {
         [
             "--user is-system-running [down]",
             "--user daemon-reload [down]",
-            "--user enable --now agentmail [down]",
+            "--user enable --now agent-communication [down]",
         ]
     );
 }
@@ -4198,7 +4287,7 @@ fn service_restarts_a_replaced_unit() {
 #[test]
 fn service_rerun_after_a_failed_install_restarts_the_service() {
     // Install replaces docs/daemon.md's unit while the service runs on it, and
-    // fails before the service is restarted onto agentmail's unit: running
+    // fails before the service is restarted onto agent-communication's unit: running
     // it again, as the error says, finishes it with the restart, though
     // the unit file is already as it should be.
     let tail = |s: &ServiceHome, n: usize| s.log()[n..].to_vec();
@@ -4244,8 +4333,8 @@ fn service_rerun_after_a_failed_install_restarts_the_service() {
             [
                 "--user is-system-running [down]",
                 "--user daemon-reload [down]",
-                "--user enable --now agentmail [down]",
-                "--user try-restart agentmail [down]",
+                "--user enable --now agent-communication [down]",
+                "--user try-restart agent-communication [down]",
             ],
             "{fail}"
         );
@@ -4265,17 +4354,17 @@ fn service_rerun_after_a_failed_install_restarts_the_service() {
             .success();
         s.log()[n..].iter().any(|l| l.contains("try-restart"))
     };
-    let other = s.h.dir.path().join("pkg/agentmail.service");
+    let other = s.h.dir.path().join("pkg/agent-communication.service");
     assert!(restarts(s.loaded().replace(
         &format!("FragmentPath={}", s.unit().display()),
         &format!("FragmentPath={}", other.display())
     )));
     assert!(restarts(s.loaded().replace(
         &format!("path={}", bin_path()),
-        "path=/old/agentmail"
+        "path=/old/agent-communication"
     )));
     assert!(restarts("LoadState=not-found\nFragmentPath=\n".to_string()));
-    // On agentmail's unit, loaded, and started since it was written: left
+    // On agent-communication's unit, loaded, and started since it was written: left
     // running, its clients undisturbed.
     assert!(!restarts(s.loaded()));
     assert!(!restarts(format!(
@@ -4291,7 +4380,7 @@ fn service_rerun_after_a_failed_install_restarts_the_service() {
             &format!("FragmentPath={}", s.unit().display()),
             &format!(
                 "FragmentPath={}",
-                alias.join("systemd/user/agentmail.service").display()
+                alias.join("systemd/user/agent-communication.service").display()
             )
         )));
     }
@@ -4311,18 +4400,18 @@ fn service_rerun_after_a_failed_install_restarts_the_service() {
 fn service_uninstall_cleans_up_through_a_symlinked_config_directory() {
     // The config directory reaches systemd through a symlink (HOME, say,
     // a link to another disk): the enable link and the FragmentPath name
-    // agentmail's removed unit by the other path, and are agentmail's all
+    // agent-communication's removed unit by the other path, and are agent-communication's all
     // the same.
     let s = ServiceHome::new();
     s.cli().args(["install", "--service"]).assert().success();
     let alias = s.h.dir.path().join("alias-cfg");
     std::os::unix::fs::symlink(s.config(), &alias).unwrap();
-    let aliased = alias.join("systemd/user/agentmail.service");
+    let aliased = alias.join("systemd/user/agent-communication.service");
     let link = s
         .unit()
         .parent()
         .unwrap()
-        .join("default.target.wants/agentmail.service");
+        .join("default.target.wants/agent-communication.service");
     std::fs::create_dir_all(link.parent().unwrap()).unwrap();
     std::os::unix::fs::symlink(&aliased, &link).unwrap();
     std::fs::remove_file(s.unit()).unwrap();
@@ -4346,7 +4435,7 @@ fn service_uninstall_cleans_up_through_a_symlinked_config_directory() {
         s.log()[n..],
         [
             "--user is-system-running [down]",
-            "--user stop agentmail [down]",
+            "--user stop agent-communication [down]",
             "--user daemon-reload [down]",
         ]
     );
@@ -4354,9 +4443,9 @@ fn service_uninstall_cleans_up_through_a_symlinked_config_directory() {
 }
 
 #[test]
-fn service_uninstall_leaves_a_unit_agentmail_did_not_write() {
+fn service_uninstall_leaves_a_unit_agent_communication_did_not_write() {
     let s = ServiceHome::new();
-    let mine = "[Service]\nExecStart=/old/agentmail daemon run\nEnvironment=FOO=1\n";
+    let mine = "[Service]\nExecStart=/old/agent-communication daemon run\nEnvironment=FOO=1\n";
     write(&s.unit(), mine);
     let out = s
         .cli()
@@ -4367,7 +4456,10 @@ fn service_uninstall_leaves_a_unit_agentmail_did_not_write() {
         .stderr
         .clone();
     let err = String::from_utf8(out).unwrap();
-    assert!(err.contains("not the unit agentmail installs"), "{err}");
+    assert!(
+        err.contains("not the unit agent-communication installs"),
+        "{err}"
+    );
     assert!(
         err.contains(&format!("rm -f {}", marker(&s.unit()).display())),
         "{err}"
@@ -4383,7 +4475,7 @@ fn service_uninstall_removes_the_readme_unit() {
     // removed, but kept as the backup first, with how to put it back.
     for text in [
         readme_unit(),
-        install::service::unit(Path::new("/x/agentmail")).unwrap(),
+        install::service::unit(Path::new("/x/agent-communication")).unwrap(),
     ] {
         let s = ServiceHome::new();
         write(&s.unit(), &text);
@@ -4463,10 +4555,10 @@ fn service_install_keeps_a_readme_unit_written_by_hand() {
 #[test]
 fn service_never_drops_a_readme_unit_over_an_earlier_kept_unit() {
     // An earlier unit X is kept as the backup, and docs/daemon.md's unit was
-    // written by hand in place of agentmail's: neither install nor
+    // written by hand in place of agent-communication's: neither install nor
     // uninstall discards either.
     let s = ServiceHome::new();
-    let x = "[Service]\nExecStart=/x/agentmail daemon run\n";
+    let x = "[Service]\nExecStart=/x/agent-communication daemon run\n";
     let readme = readme_unit();
     write(&bak(&s.unit()), x);
     write(&s.unit(), &readme);
@@ -4489,25 +4581,28 @@ fn service_never_drops_a_readme_unit_over_an_earlier_kept_unit() {
         .stderr
         .clone();
     let err = String::from_utf8(out).unwrap();
-    assert!(err.contains("not the unit agentmail installs"), "{err}");
+    assert!(
+        err.contains("not the unit agent-communication installs"),
+        "{err}"
+    );
     assert_eq!(read(&s.unit()), readme);
     assert_eq!(read(&bak(&s.unit())), x);
     assert!(s.log().is_empty());
 
-    // agentmail's own unit written over X (by an older binary, say) is
-    // replaced and removed as agentmail's, X kept.
+    // agent-communication's own unit written over X (by an older binary, say) is
+    // replaced and removed as agent-communication's, X kept.
     let s = ServiceHome::new();
     write(&s.unit(), x);
     s.cli().args(["install", "--service"]).assert().success();
     write(
         &s.unit(),
-        &install::service::unit(Path::new("/old/agentmail")).unwrap(),
+        &install::service::unit(Path::new("/old/agent-communication")).unwrap(),
     );
     s.cli().args(["install", "--service"]).assert().success();
     assert_eq!(read(&bak(&s.unit())), x);
     write(
         &s.unit(),
-        &install::service::unit(Path::new("/old/agentmail")).unwrap(),
+        &install::service::unit(Path::new("/old/agent-communication")).unwrap(),
     );
     s.cli().args(["uninstall", "--service"]).assert().success();
     assert!(!s.unit().exists());
@@ -4535,7 +4630,7 @@ fn service_keeps_edits_to_its_unit() {
     assert!(!s.unit().exists());
     assert_eq!(read(&bak(&s.unit())), edited);
 
-    // Install over an edited unit agentmail created refuses: replacing it
+    // Install over an edited unit agent-communication created refuses: replacing it
     // would drop the edits from the running service. It shows them and
     // says how to keep them (a drop-in) and go on.
     std::fs::remove_file(bak(&s.unit())).unwrap();
@@ -4553,11 +4648,14 @@ fn service_keeps_edits_to_its_unit() {
     let err = String::from_utf8(out).unwrap();
     assert!(err.contains("edited since"), "{err}");
     assert!(err.contains("-Environment=FOO=1"), "{err}");
-    assert!(err.contains("systemctl --user edit agentmail"), "{err}");
+    assert!(
+        err.contains("systemctl --user edit agent-communication"),
+        "{err}"
+    );
     assert!(
         err.contains(
             &s.unit()
-                .with_file_name("agentmail.service.d/override.conf")
+                .with_file_name("agent-communication.service.d/override.conf")
                 .display()
                 .to_string()
         ),
@@ -4574,8 +4672,8 @@ fn service_keeps_edits_to_its_unit() {
         .assert()
         .failure();
     assert_eq!(read(&s.unit()), edited);
-    // An edit only to `ExecStart` is agentmail's to replace.
-    let exec_only = install::service::unit(Path::new("/elsewhere/agentmail")).unwrap();
+    // An edit only to `ExecStart` is agent-communication's to replace.
+    let exec_only = install::service::unit(Path::new("/elsewhere/agent-communication")).unwrap();
     write(&s.unit(), &exec_only);
     s.cli().args(["install", "--service"]).assert().success();
     assert_eq!(
@@ -4610,8 +4708,8 @@ fn service_keeps_edits_to_its_unit() {
 #[test]
 fn service_install_never_drops_an_earlier_kept_unit() {
     let s = ServiceHome::new();
-    let a = "[Service]\nExecStart=/a/agentmail daemon run\n";
-    let b = "[Service]\nExecStart=/b/agentmail daemon run\n";
+    let a = "[Service]\nExecStart=/a/agent-communication daemon run\n";
+    let b = "[Service]\nExecStart=/b/agent-communication daemon run\n";
     write(&s.unit(), a);
     s.cli().args(["install", "--service"]).assert().success();
     s.cli().args(["uninstall", "--service"]).assert().success();
@@ -4643,7 +4741,7 @@ fn service_install_never_drops_an_earlier_kept_unit() {
 fn service_install_keeps_a_unit_already_kept() {
     // The unit there is the one already kept: installing again is fine.
     let s = ServiceHome::new();
-    let a = "[Service]\nExecStart=/a/agentmail daemon run\n";
+    let a = "[Service]\nExecStart=/a/agent-communication daemon run\n";
     write(&s.unit(), a);
     s.cli().args(["install", "--service"]).assert().success();
     s.cli().args(["uninstall", "--service"]).assert().success();
@@ -4660,13 +4758,15 @@ fn service_environment_in_a_drop_in_survives_install_and_uninstall() {
     // run by another path, which changes `ExecStart`) keeps it applying.
     let s = ServiceHome::new();
     s.cli().args(["install", "--service"]).assert().success();
-    let dropin = s.unit().with_file_name("agentmail.service.d/override.conf");
-    let conf = "[Service]\nEnvironment=AGENTMAIL_DATA_DIR=%h/agentmail-data\n";
+    let dropin = s
+        .unit()
+        .with_file_name("agent-communication.service.d/override.conf");
+    let conf = "[Service]\nEnvironment=AGENT_COMMUNICATION_DATA_DIR=%h/agent-communication-data\n";
     write(&dropin, conf);
-    let link = s.h.dir.path().join("bin/agentmail");
+    let link = s.h.dir.path().join("bin/agent-communication");
     std::fs::create_dir_all(link.parent().unwrap()).unwrap();
     #[cfg(unix)]
-    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_agentmail"), &link).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_agent-communication"), &link).unwrap();
     s.cli_as(&link)
         .args(["install", "--service"])
         .assert()
@@ -4703,7 +4803,7 @@ fn service_notes_settings_of_a_replaced_unit() {
     let s = ServiceHome::new();
     let mine = readme_unit().replace(
         "[Service]\n",
-        "[Service]\nEnvironment=AGENTMAIL_DATA_DIR=%h/agentmail-data\n",
+        "[Service]\nEnvironment=AGENT_COMMUNICATION_DATA_DIR=%h/agent-communication-data\n",
     );
     write(&s.unit(), &mine);
     let out = s
@@ -4719,12 +4819,15 @@ fn service_notes_settings_of_a_replaced_unit() {
     assert!(
         out.contains(&format!(
             "note: the unit replaced (kept as {}) also set \
-             `Environment=AGENTMAIL_DATA_DIR=%h/agentmail-data`, which the service no longer gets",
+             `Environment=AGENT_COMMUNICATION_DATA_DIR=%h/agent-communication-data`, which the service no longer gets",
             bak(&s.unit()).display()
         )),
         "{out}"
     );
-    assert!(out.contains("systemctl --user edit agentmail"), "{out}");
+    assert!(
+        out.contains("systemctl --user edit agent-communication"),
+        "{out}"
+    );
     // docs/daemon.md's unit as is sets nothing more: no note.
     let s = ServiceHome::new();
     write(&s.unit(), &readme_unit());
@@ -4759,7 +4862,7 @@ fn service_stops_a_daemon_started_on_demand_while_it_starts() {
     assert!(
         s.log()
             .iter()
-            .any(|l| l == "--user enable --now agentmail [down]"),
+            .any(|l| l == "--user enable --now agent-communication [down]"),
         "{:?}",
         s.log()
     );
@@ -4801,12 +4904,15 @@ fn service_stops_the_on_demand_daemon_where_the_service_runs() {
     let data = d.join("svc-data");
     let at_data = || {
         let mut c = s.cli();
-        c.env("AGENTMAIL_DATA_DIR", &data);
+        c.env("AGENT_COMMUNICATION_DATA_DIR", &data);
         c
     };
-    let dropin = format!("Environment=AGENTMAIL_DATA_DIR={}\n", data.display());
+    let dropin = format!(
+        "Environment=AGENT_COMMUNICATION_DATA_DIR={}\n",
+        data.display()
+    );
     let imported = format!(
-        "AGENTMAIL_DATA_DIR={}\nXDG_CONFIG_HOME={}\n",
+        "AGENT_COMMUNICATION_DATA_DIR={}\nXDG_CONFIG_HOME={}\n",
         data.display(),
         s.config().display()
     );
@@ -4850,9 +4956,9 @@ fn service_stops_the_on_demand_daemon_where_the_service_runs() {
         let out = String::from_utf8(out).unwrap();
         assert!(
             out.contains(&format!(
-                "ran env AGENTMAIL_DATA_DIR={} AGENTMAIL_SOCKET={} {} daemon stop",
+                "ran env AGENT_COMMUNICATION_DATA_DIR={} AGENT_COMMUNICATION_SOCKET={} {} daemon stop",
                 data.display(),
-                data.join("agentmail.sock").display(),
+                data.join("agent-communication.sock").display(),
                 bin_path()
             )),
             "{var}: {out}"
@@ -4862,7 +4968,7 @@ fn service_stops_the_on_demand_daemon_where_the_service_runs() {
             "{var}: {out}"
         );
         assert!(
-            out.contains("gets AGENTMAIL_DATA_DIR differently"),
+            out.contains("gets AGENT_COMMUNICATION_DATA_DIR differently"),
             "{var}: {out}"
         );
         assert!(!s.daemon_up(at_data()), "{var}: {out}");
@@ -4877,7 +4983,7 @@ fn service_stops_the_on_demand_daemon_where_the_service_runs() {
     at_data().args(["daemon", "start"]).assert().success();
     let out = s
         .cli()
-        .env("AGENTMAIL_DATA_DIR", d.join("mine"))
+        .env("AGENT_COMMUNICATION_DATA_DIR", d.join("mine"))
         .env("FAKE_UNITENV", &dropin)
         .args(["install", "--service"])
         .assert()
@@ -4887,7 +4993,7 @@ fn service_stops_the_on_demand_daemon_where_the_service_runs() {
         .clone();
     let out = String::from_utf8(out).unwrap();
     assert!(
-        out.contains("note: AGENTMAIL_DATA_DIR is set here but the service does not get"),
+        out.contains("note: AGENT_COMMUNICATION_DATA_DIR is set here but the service does not get"),
         "{out}"
     );
     assert!(!s.daemon_up(at_data()), "{out}");
@@ -4896,7 +5002,10 @@ fn service_stops_the_on_demand_daemon_where_the_service_runs() {
     let file = d.join("svc.env");
     write(
         &file,
-        &format!("AGENTMAIL_DATA_DIR='{}'\n", d.join("from-file").display()),
+        &format!(
+            "AGENT_COMMUNICATION_DATA_DIR='{}'\n",
+            d.join("from-file").display()
+        ),
     );
     let out = s
         .cli()

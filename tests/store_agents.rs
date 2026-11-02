@@ -3,8 +3,8 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use agentmail::model::{Agent, Harness, Presence, ProcId, SessionKey};
-use agentmail::store::{RegisterReq, Store, StoreError};
+use agent_communication::model::{Agent, Harness, Presence, ProcId, SessionKey};
+use agent_communication::store::{RegisterReq, Store, StoreError};
 use tempfile::TempDir;
 
 fn p(pid: u32) -> ProcId {
@@ -34,7 +34,7 @@ impl Procs {
 
 fn store() -> (TempDir, Store) {
     let dir = TempDir::new().unwrap();
-    let store = Store::open(&dir.path().join("agentmail.redb")).unwrap();
+    let store = Store::open(&dir.path().join("agent-communication.redb")).unwrap();
     (dir, store)
 }
 
@@ -520,7 +520,7 @@ fn list_agents_returns_all() {
 #[test]
 fn reopen_persists() {
     let dir = TempDir::new().unwrap();
-    let path = dir.path().join("agentmail.redb");
+    let path = dir.path().join("agent-communication.redb");
     let procs = Procs::new(&[]);
     let (a, f) = {
         let s = Store::open(&path).unwrap();
@@ -537,7 +537,7 @@ fn reopen_persists() {
 #[test]
 fn open_creates_missing_parent_dir() {
     let dir = TempDir::new().unwrap();
-    let path = dir.path().join("nested").join("agentmail.redb");
+    let path = dir.path().join("nested").join("agent-communication.redb");
     Store::open(&path).unwrap();
     assert!(Path::new(&path).exists());
 }
@@ -615,7 +615,7 @@ fn session_binding_is_per_harness() {
 #[test]
 fn signoff_unbinds_session_and_reopen_keeps_bindings() {
     let dir = TempDir::new().unwrap();
-    let path = dir.path().join("agentmail.redb");
+    let path = dir.path().join("agent-communication.redb");
     let procs = Procs::new(&[p(1)]);
     let s1 = session_req("x", "/", None, "s1").session.unwrap();
     let s2 = session_req("x", "/", None, "s2").session.unwrap();

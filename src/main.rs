@@ -2,5 +2,5 @@ use std::process::ExitCode;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    agentmail::cli::main().await
+    agent_communication::cli::main().await
 }

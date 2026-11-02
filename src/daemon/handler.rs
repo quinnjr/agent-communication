@@ -63,8 +63,8 @@ fn deadlock(q: &Question) -> ClientError {
         ErrorCode::Deadlock,
         format!(
             "asking would deadlock: {} is already waiting on you for question {}. \
-             Answer it first (`agentmail answer {}`), or send a clarifying reply \
-             in that thread (`agentmail reply {}`)",
+             Answer it first (`agent-communication answer {}`), or send a clarifying reply \
+             in that thread (`agent-communication reply {}`)",
             q.asker, q.id, q.id, q.id
         ),
     )
@@ -84,7 +84,7 @@ fn human_has_no(what: &str) -> ClientError {
 /// What a [`Caller::Procs`] caller is told when none of its processes is
 /// bound to an agent.
 pub const NOT_REGISTERED: &str =
-    "this session is not registered: run `agentmail register <name>` (or use --as human)";
+    "this session is not registered: run `agent-communication register <name>` (or use --as human)";
 
 /// How many times a send resolves its recipients again when an agent
 /// registers under a held name between resolving and storing.
@@ -122,7 +122,7 @@ fn ask_outcome(listening: Result<bool, ClientError>, question_id: &str) -> Optio
         })),
         Err(e) => {
             eprintln!(
-                "agentmail daemon: question {question_id} was sent, but checking who can \
+                "agent-communication daemon: question {question_id} was sent, but checking who can \
                  answer it failed: {}",
                 e.message
             );
@@ -189,7 +189,7 @@ fn ambiguous(name: &str, views: Vec<AgentView>, among: &str) -> ClientError {
         ErrorCode::AmbiguousRecipient,
         format!(
             "{name:?} matches several {among}: {}. Pick one, add it as a contact \
-             (`agentmail contact add <address>`) and resend to its full address",
+             (`agent-communication contact add <address>`) and resend to its full address",
             describe(&views)
         ),
     );
@@ -582,7 +582,7 @@ impl Handler {
                         ErrorCode::NoIdentity,
                         format!(
                             "{address:?} is not a registered address: run \
-                             `agentmail register <name>` (or use --as human)"
+                             `agent-communication register <name>` (or use --as human)"
                         ),
                     )
                 })?
@@ -603,7 +603,7 @@ impl Handler {
                         ErrorCode::NoIdentity,
                         format!(
                             "no agent is registered for this {} session: run \
-                             `agentmail register <name>` (or use --as human)",
+                             `agent-communication register <name>` (or use --as human)",
                             session.harness.as_str()
                         ),
                     )
@@ -702,7 +702,7 @@ impl Handler {
             return Err(ClientError::new(
                 ErrorCode::UnknownRecipient,
                 format!(
-                    "unknown recipient {entry:?}: no agent has that address (see `agentmail agents --all`)"
+                    "unknown recipient {entry:?}: no agent has that address (see `agent-communication agents --all`)"
                 ),
             ));
         }
@@ -774,7 +774,7 @@ impl Handler {
                 ErrorCode::UnknownRecipient,
                 format!(
                     "unknown recipient {entry:?}: no active agent has that name \
-                     (see `agentmail agents --all`)"
+                     (see `agent-communication agents --all`)"
                 ),
             )),
         }
@@ -1390,13 +1390,13 @@ impl Handler {
             .map_err(store_err)?
             .ok_or_else(|| ClientError::new(ErrorCode::NotFound, format!("no agent {me:?}")))?;
         // A signed-off agent has no hook status, however it was named: an
-        // `AGENTMAIL_ADDRESS` caller resolves signed-off agents too, and the
+        // `AGENT_COMMUNICATION_ADDRESS` caller resolves signed-off agents too, and the
         // hook must go silent and end its wake loop, as for a session.
         if agent.signed_off {
             return Err(ClientError::new(
                 ErrorCode::NoIdentity,
                 format!(
-                    "{me:?} has signed off: run `agentmail register <name>` \
+                    "{me:?} has signed off: run `agent-communication register <name>` \
                      (or use --as human)"
                 ),
             ));
@@ -1814,7 +1814,7 @@ mod tests {
             |cmd| output_within_with(&Commands::new(), cmd, Duration::from_secs(5), kill_group);
         assert_eq!(run(Command::new("false")), Err(GiveUp::Failed));
         assert_eq!(
-            run(Command::new("/nonexistent/agentmail-test")),
+            run(Command::new("/nonexistent/agent-communication-test")),
             Err(GiveUp::Spawn)
         );
     }

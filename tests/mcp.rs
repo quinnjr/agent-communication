@@ -10,7 +10,7 @@ use rmcp::{RoleClient, ServiceExt};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
-const BIN: &str = env!("CARGO_BIN_EXE_agentmail");
+const BIN: &str = env!("CARGO_BIN_EXE_agent-communication");
 
 /// The tools the server must offer, sorted.
 const TOOLS: [&str; 15] = [
@@ -56,17 +56,17 @@ impl Env {
     }
 
     fn socket(&self) -> PathBuf {
-        self.dir.path().join("agentmail.sock")
+        self.dir.path().join("agent-communication.sock")
     }
 
     fn cmd(&self) -> StdCommand {
         let mut c = StdCommand::new(BIN);
-        c.env("AGENTMAIL_DATA_DIR", self.data_dir())
-            .env("AGENTMAIL_SOCKET", self.socket())
-            .env_remove("AGENTMAIL_ADDRESS")
-            .env_remove("AGENTMAIL_HUMAN")
-            .env_remove("AGENTMAIL_WAKE")
-            .env_remove("AGENTMAIL_BIN")
+        c.env("AGENT_COMMUNICATION_DATA_DIR", self.data_dir())
+            .env("AGENT_COMMUNICATION_SOCKET", self.socket())
+            .env_remove("AGENT_COMMUNICATION_ADDRESS")
+            .env_remove("AGENT_COMMUNICATION_HUMAN")
+            .env_remove("AGENT_COMMUNICATION_WAKE")
+            .env_remove("AGENT_COMMUNICATION_BIN")
             .env_remove("OPENCODE_SESSION_ID")
             .env_remove("KIRO_SESSION_ID")
             .current_dir(&self.work);
@@ -92,7 +92,7 @@ impl Env {
         v["address"].as_str().unwrap().to_string()
     }
 
-    /// `agentmail mcp` as a child process, with an initialized client.
+    /// `agent-communication mcp` as a child process, with an initialized client.
     async fn mcp(&self) -> RunningService<RoleClient, ClientConfig> {
         self.mcp_with(&[]).await
     }
@@ -101,16 +101,16 @@ impl Env {
     async fn mcp_with(&self, vars: &[(&str, &str)]) -> RunningService<RoleClient, ClientConfig> {
         let transport = TokioChildProcess::new(tokio::process::Command::new(BIN).configure(|c| {
             // A private kiro config, so the user's never sets the default.
-            c.env_remove("AGENTMAIL_KIRO_WAKE")
-                .env_remove("AGENTMAIL_WAKE")
+            c.env_remove("AGENT_COMMUNICATION_KIRO_WAKE")
+                .env_remove("AGENT_COMMUNICATION_WAKE")
                 .env("KIRO_HOME", self.dir.path().join("kiro"))
                 .envs(vars.iter().copied())
                 .arg("mcp")
-                .env("AGENTMAIL_DATA_DIR", self.data_dir())
-                .env("AGENTMAIL_SOCKET", self.socket())
-                .env_remove("AGENTMAIL_ADDRESS")
-                .env_remove("AGENTMAIL_HUMAN")
-                .env_remove("AGENTMAIL_BIN")
+                .env("AGENT_COMMUNICATION_DATA_DIR", self.data_dir())
+                .env("AGENT_COMMUNICATION_SOCKET", self.socket())
+                .env_remove("AGENT_COMMUNICATION_ADDRESS")
+                .env_remove("AGENT_COMMUNICATION_HUMAN")
+                .env_remove("AGENT_COMMUNICATION_BIN")
                 .env_remove("OPENCODE_SESSION_ID")
                 .env_remove("KIRO_SESSION_ID")
                 .current_dir(&self.work);
@@ -121,7 +121,7 @@ impl Env {
 }
 
 impl Env {
-    /// `agentmail mcp` run by a fake harness process named `harness` (a
+    /// `agent-communication mcp` run by a fake harness process named `harness` (a
     /// copy of `/bin/sh`) through `script`, a shell snippet in which `$MCP`
     /// starts the server. The harness writes its pid to a file; returns the
     /// client and that pid.
@@ -142,12 +142,12 @@ impl Env {
             TokioChildProcess::new(tokio::process::Command::new(&fake).configure(|c| {
                 c.arg("-c")
                     .arg(&script)
-                    .env("AGENTMAIL_DATA_DIR", self.data_dir())
-                    .env("AGENTMAIL_SOCKET", self.socket())
-                    .env_remove("AGENTMAIL_ADDRESS")
-                    .env_remove("AGENTMAIL_HUMAN")
-                    .env_remove("AGENTMAIL_WAKE")
-                    .env_remove("AGENTMAIL_BIN")
+                    .env("AGENT_COMMUNICATION_DATA_DIR", self.data_dir())
+                    .env("AGENT_COMMUNICATION_SOCKET", self.socket())
+                    .env_remove("AGENT_COMMUNICATION_ADDRESS")
+                    .env_remove("AGENT_COMMUNICATION_HUMAN")
+                    .env_remove("AGENT_COMMUNICATION_WAKE")
+                    .env_remove("AGENT_COMMUNICATION_BIN")
                     .env_remove("OPENCODE_SESSION_ID")
                     .env_remove("KIRO_SESSION_ID")
                     .current_dir(&self.work);
@@ -228,7 +228,7 @@ async fn mcp_server_end_to_end() {
     );
     assert_eq!(
         info.server_info.as_ref().map(|i| i.name.as_str()),
-        Some("agentmail")
+        Some("agent-communication")
     );
 
     let mut names: Vec<String> = client
@@ -261,7 +261,7 @@ async fn mcp_server_end_to_end() {
     let frontend = env.cli_agent("frontend");
     let out = env
         .cmd()
-        .env("AGENTMAIL_ADDRESS", &frontend)
+        .env("AGENT_COMMUNICATION_ADDRESS", &frontend)
         .args([
             "send",
             "--to",
@@ -300,7 +300,7 @@ async fn mcp_server_end_to_end() {
     .await);
     let out = env
         .cmd()
-        .env("AGENTMAIL_ADDRESS", &frontend)
+        .env("AGENT_COMMUNICATION_ADDRESS", &frontend)
         .args(["inbox", "--json"])
         .output()
         .unwrap();
@@ -352,7 +352,7 @@ async fn mcp_server_end_to_end() {
     let qid = a["question_id"].as_str().unwrap().to_string();
     let out = env
         .cmd()
-        .env("AGENTMAIL_ADDRESS", &frontend)
+        .env("AGENT_COMMUNICATION_ADDRESS", &frontend)
         .args(["answer", &qid, "--body", "8080"])
         .output()
         .unwrap();
@@ -439,7 +439,7 @@ async fn mcp_server_status_agents_search_signoff() {
     // `search` finds a message by its subject.
     let out = env
         .cmd()
-        .env("AGENTMAIL_ADDRESS", &frontend)
+        .env("AGENT_COMMUNICATION_ADDRESS", &frontend)
         .args([
             "send",
             "--to",
@@ -550,7 +550,7 @@ async fn mcp_blocking_tools_do_not_block_others() {
 
     let out = env
         .cmd()
-        .env("AGENTMAIL_ADDRESS", &frontend)
+        .env("AGENT_COMMUNICATION_ADDRESS", &frontend)
         .args(["send", "--to", &backend, "--subject", "ping", "--body", "x"])
         .output()
         .unwrap();
@@ -572,7 +572,7 @@ async fn mcp_blocking_tools_do_not_block_others() {
 #[tokio::test(flavor = "multi_thread")]
 async fn opencode_meta_session_isolates_callers() {
     let mut env = Env::new();
-    // opencode -> agentmail mcp; the trailing `true` stops the shell from
+    // opencode -> agent-communication mcp; the trailing `true` stops the shell from
     // exec'ing the server.
     let (client, opencode) = env.mcp_under("opencode", "$MCP; true").await;
 
@@ -587,7 +587,11 @@ async fn opencode_meta_session_isolates_callers() {
     assert_eq!(r.is_error, Some(true), "{}", text(&r));
     assert!(text(&r).contains("NoIdentity"), "{}", text(&r));
     assert!(text(&r).contains("no opencode session id"), "{}", text(&r));
-    assert!(!text(&r).contains("agentmail register"), "{}", text(&r));
+    assert!(
+        !text(&r).contains("agent-communication register"),
+        "{}",
+        text(&r)
+    );
     // A session's call that is not registered keeps the daemon's advice.
     let r = call_in_session(&client, "s0", "whoami", json!({})).await;
     assert!(text(&r).contains("NoIdentity"), "{}", text(&r));
@@ -651,7 +655,7 @@ async fn opencode_meta_session_isolates_callers() {
     let sender = env.cli_agent("sender");
     let out = env
         .cmd()
-        .env("AGENTMAIL_ADDRESS", &sender)
+        .env("AGENT_COMMUNICATION_ADDRESS", &sender)
         .args([
             "send",
             "--to",
@@ -683,7 +687,7 @@ async fn opencode_meta_session_isolates_callers() {
 #[tokio::test(flavor = "multi_thread")]
 async fn opencode_via_wrapper_refuses_sessionless_register() {
     let env = Env::new();
-    // opencode -> sh (the wrapper) -> agentmail mcp.
+    // opencode -> sh (the wrapper) -> agent-communication mcp.
     let (client, opencode) = env
         .mcp_under("opencode", "/bin/sh -c '$MCP; true'; true")
         .await;
@@ -703,7 +707,7 @@ async fn opencode_via_wrapper_refuses_sessionless_register() {
         "{r}"
     );
     // Bound to the opencode process, not the wrapper: the same process
-    // `agentmail register` in that session's shell binds.
+    // `agent-communication register` in that session's shell binds.
     let me = ok(&call_in_session(&client, "s1", "whoami", json!({})).await);
     assert_eq!(me["agent"]["proc_id"]["pid"], opencode, "{me}");
     let r = call(&client, "whoami", json!({})).await;
@@ -714,7 +718,7 @@ async fn opencode_via_wrapper_refuses_sessionless_register() {
 
 /// Claude Code gets no harness redirect (see docs/harness-notes.md): a
 /// server it starts through a wrapper that stays its parent (claude -> sh
-/// -> agentmail mcp) binds the wrapper, not Claude Code.
+/// -> agent-communication mcp) binds the wrapper, not Claude Code.
 #[tokio::test(flavor = "multi_thread")]
 async fn claude_code_wrapper_binds_the_wrapper() {
     let env = Env::new();
@@ -744,7 +748,7 @@ async fn claude_code_wrapper_binds_the_wrapper() {
 #[tokio::test(flavor = "multi_thread")]
 async fn bind_prefers_harness_ancestor() {
     let env = Env::new();
-    // kiro-cli -> sh (the intermediate) -> agentmail mcp. The trailing
+    // kiro-cli -> sh (the intermediate) -> agent-communication mcp. The trailing
     // `true`s stop either shell from exec'ing its last command.
     let (client, kiro) = env
         .mcp_under("kiro-cli", "/bin/sh -c '$MCP; true'; true")
@@ -760,7 +764,7 @@ async fn bind_prefers_harness_ancestor() {
 }
 
 /// The real kiro chain: `kiro-cli` -> `kiro-cli-chat` -> the engine's
-/// `node` -> agentmail mcp. `kiro-cli-chat` is not a harness name, so the
+/// `node` -> agent-communication mcp. `kiro-cli-chat` is not a harness name, so the
 /// binding skips it and reaches `kiro-cli`.
 #[tokio::test(flavor = "multi_thread")]
 async fn bind_skips_kiro_cli_chat() {
@@ -769,7 +773,7 @@ async fn bind_skips_kiro_cli_chat() {
     std::os::unix::fs::symlink("/bin/sh", &chat).unwrap();
     let node = env.dir.path().join("node");
     std::os::unix::fs::symlink("/bin/sh", &node).unwrap();
-    // kiro-cli -> kiro-cli-chat -> node -> agentmail mcp.
+    // kiro-cli -> kiro-cli-chat -> node -> agent-communication mcp.
     let script = format!(
         "'{}' -c \"'{}' -c '$MCP; true'; true\"; true",
         chat.display(),
@@ -809,7 +813,7 @@ fn read_pid(path: &std::path::Path) -> u32 {
 }
 
 /// Another MCP client run from kiro's shell tool (kiro-cli -> sh with
-/// `KIRO_SESSION_ID` -> the client -> agentmail mcp) binds its own process.
+/// `KIRO_SESSION_ID` -> the client -> agent-communication mcp) binds its own process.
 /// Redirected to kiro-cli, it would take over the agent kiro's own server
 /// registered there.
 #[tokio::test(flavor = "multi_thread")]
@@ -846,7 +850,7 @@ async fn client_from_kiro_shell_binds_itself() {
     // kiro's agent keeps its binding.
     let out = env
         .cmd()
-        .env("AGENTMAIL_ADDRESS", &kiro_address)
+        .env("AGENT_COMMUNICATION_ADDRESS", &kiro_address)
         .args(["whoami", "--json"])
         .output()
         .unwrap();
@@ -863,7 +867,7 @@ async fn client_from_kiro_shell_binds_itself() {
 }
 
 /// Another MCP client run from opencode's bash tool (opencode -> sh with
-/// `OPENCODE_SESSION_ID` -> the client -> agentmail mcp) is not opencode's
+/// `OPENCODE_SESSION_ID` -> the client -> agent-communication mcp) is not opencode's
 /// shared server: it binds its own process and registers without a
 /// session.
 #[tokio::test(flavor = "multi_thread")]
@@ -886,7 +890,7 @@ async fn client_from_opencode_shell_binds_itself() {
 }
 
 /// Harness Task 8: a kiro agent registers with `wake` off unless asked,
-/// or unless `install --kiro-wake` gave the server `AGENTMAIL_KIRO_WAKE=1`.
+/// or unless `install --kiro-wake` gave the server `AGENT_COMMUNICATION_KIRO_WAKE=1`.
 #[tokio::test(flavor = "multi_thread")]
 async fn mcp_register_wake_defaults_off_for_kiro() {
     let env = Env::new();
@@ -900,16 +904,21 @@ async fn mcp_register_wake_defaults_off_for_kiro() {
     assert_eq!(me["agent"]["wake"], true, "{me}");
     client.cancel().await.unwrap();
 
-    let client = env.mcp_with(&[("AGENTMAIL_KIRO_WAKE", "1")]).await;
+    let client = env
+        .mcp_with(&[("AGENT_COMMUNICATION_KIRO_WAKE", "1")])
+        .await;
     let args = json!({"name": "k2", "harness": "kiro", "fresh": true});
     ok(&call(&client, "register", args).await);
     let me = ok(&call(&client, "whoami", json!({})).await);
     assert_eq!(me["agent"]["wake"], true, "{me}");
     client.cancel().await.unwrap();
 
-    // `AGENTMAIL_WAKE=0` turns waking off for every harness, `wake: true`
-    // and `AGENTMAIL_KIRO_WAKE=1` included.
-    let vars = [("AGENTMAIL_WAKE", "0"), ("AGENTMAIL_KIRO_WAKE", "1")];
+    // `AGENT_COMMUNICATION_WAKE=0` turns waking off for every harness, `wake: true`
+    // and `AGENT_COMMUNICATION_KIRO_WAKE=1` included.
+    let vars = [
+        ("AGENT_COMMUNICATION_WAKE", "0"),
+        ("AGENT_COMMUNICATION_KIRO_WAKE", "1"),
+    ];
     let client = env.mcp_with(&vars).await;
     for (name, harness) in [("k3", "kiro"), ("c1", "claude-code"), ("o1", "other")] {
         let args = json!({"name": name, "harness": harness, "fresh": true, "wake": true});
@@ -921,16 +930,16 @@ async fn mcp_register_wake_defaults_off_for_kiro() {
 }
 
 /// The MCP server is the process kiro started with the `env` it settled
-/// on, so without `AGENTMAIL_KIRO_WAKE=1` in its own environment
+/// on, so without `AGENT_COMMUNICATION_KIRO_WAKE=1` in its own environment
 /// `--kiro-wake` is off, whatever the installed `mcp.json` files say (an
 /// untrusted workspace's file, say, which kiro did not load).
 #[tokio::test(flavor = "multi_thread")]
 async fn mcp_register_wake_ignores_installed_files() {
     let env = Env::new();
-    let entry = json!({"mcpServers": {"agentmail": {
-        "command": "agentmail",
+    let entry = json!({"mcpServers": {"agent-communication": {
+        "command": "agent-communication",
         "args": ["mcp"],
-        "env": {"AGENTMAIL_KIRO_WAKE": "1"},
+        "env": {"AGENT_COMMUNICATION_KIRO_WAKE": "1"},
     }}})
     .to_string();
     for dir in [env.dir.path().join("kiro"), env.work.join(".kiro")] {

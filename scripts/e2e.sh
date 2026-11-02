@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Real-harness end-to-end test for agentmail.
+# Real-harness end-to-end test for agent-communication.
 #
 #   scripts/e2e.sh <claude-code|opencode|kiro|mixed>
 #
-# Builds agentmail, creates a throwaway HOME (with private XDG_*,
+# Builds agent-communication, creates a throwaway HOME (with private XDG_*,
 # CLAUDE_CONFIG_DIR and KIRO_HOME inside it) and a private
-# AGENTMAIL_DATA_DIR / AGENTMAIL_SOCKET, runs `agentmail install` into that
+# AGENT_COMMUNICATION_DATA_DIR / AGENT_COMMUNICATION_SOCKET, runs `agent-communication install` into that
 # home, then drives two real agents headlessly:
 #
 #   A ("backend") registers, waits for mail and answers questions;
@@ -14,7 +14,7 @@
 # Steps (the failing one is printed, and the script exits non-zero):
 #   1. A registers.
 #   2. B registers and asks.
-#   3. `agentmail --as human threads --json` shows a question/answer thread
+#   3. `agent-communication --as human threads --json` shows a question/answer thread
 #      between the two addresses.
 #   4. Urgent mail from the human to A, sent while A is still working,
 #      shows up in A's output or its own session's transcript.
@@ -29,46 +29,46 @@
 #      their waking is not checked here (see docs/harness-notes.md).
 #
 # In `opencode` mode B runs in its own session on A's `opencode serve`, so
-# both sessions share one agentmail MCP server. `mixed` runs A under Claude
+# both sessions share one agent-communication MCP server. `mixed` runs A under Claude
 # Code and B under opencode (`run --standalone`).
 #
 # Needs real model access, so `cargo test` never runs it. Inputs:
 #
-#   AGENTMAIL_E2E_CLAUDE    Claude Code binary (required for claude-code and
+#   AGENT_COMMUNICATION_E2E_CLAUDE    Claude Code binary (required for claude-code and
 #                           mixed; `claude` is often a shell function). It
 #                           is run through a symlink named `claude`.
-#   AGENTMAIL_E2E_CLAUDE_CREDENTIALS
+#   AGENT_COMMUNICATION_E2E_CLAUDE_CREDENTIALS
 #                           Claude Code login to copy in (default
 #                           $CLAUDE_CONFIG_DIR/.credentials.json, else
 #                           ~/.claude/.credentials.json). Not needed when
 #                           ANTHROPIC_API_KEY is set, which is passed through.
-#   AGENTMAIL_E2E_CLAUDE_MODEL     default: haiku
-#   AGENTMAIL_E2E_OPENCODE  opencode binary (default: `opencode` on PATH)
-#   AGENTMAIL_E2E_OPENCODE_MODEL   default: opencode/big-pickle
+#   AGENT_COMMUNICATION_E2E_CLAUDE_MODEL     default: haiku
+#   AGENT_COMMUNICATION_E2E_OPENCODE  opencode binary (default: `opencode` on PATH)
+#   AGENT_COMMUNICATION_E2E_OPENCODE_MODEL   default: opencode/big-pickle
 #                           (free at the time of writing, no login; `opencode
 #                           models --standalone` lists the current ones)
-#   AGENTMAIL_E2E_OPENCODE_DATA
+#   AGENT_COMMUNICATION_E2E_OPENCODE_DATA
 #                           opencode's data dir; its login (an OpenCode
 #                           account) is copied in when there is one
 #                           (default: ${XDG_DATA_HOME:-~/.local/share}/opencode).
 #                           Free models hit a usage limit; others need it.
-#   AGENTMAIL_E2E_KIRO      kiro-cli binary (default: `kiro-cli` on PATH)
-#   AGENTMAIL_E2E_KIRO_DATA kiro-cli's data dir holding its login
+#   AGENT_COMMUNICATION_E2E_KIRO      kiro-cli binary (default: `kiro-cli` on PATH)
+#   AGENT_COMMUNICATION_E2E_KIRO_DATA kiro-cli's data dir holding its login
 #                           (default: ${XDG_DATA_HOME:-~/.local/share}/kiro-cli)
-#   AGENTMAIL_E2E_TIMEOUT   seconds allowed per wait and agent run (default: 600)
-#   AGENTMAIL_E2E_MIN_LOGIN_SECS
+#   AGENT_COMMUNICATION_E2E_TIMEOUT   seconds allowed per wait and agent run (default: 600)
+#   AGENT_COMMUNICATION_E2E_MIN_LOGIN_SECS
 #                           how long a copied login must still be valid
-#                           (default: 6 x AGENTMAIL_E2E_TIMEOUT + 300, the
+#                           (default: 6 x AGENT_COMMUNICATION_E2E_TIMEOUT + 300, the
 #                           longest a run can take: six waits plus setup).
 #                           Lower it, or the timeout, to run on a login
 #                           that expires sooner.
-#   AGENTMAIL_E2E_KEEP=1    keep the temporary directory (logs, transcripts)
+#   AGENT_COMMUNICATION_E2E_KEEP=1    keep the temporary directory (logs, transcripts)
 #
 # Logins are copied, never linked, and with their refresh token removed, so
 # the copy cannot rotate (and so invalidate) the real login. Without that
 # token the copy cannot outlive its access token, so the script refuses a
-# login that expires within AGENTMAIL_E2E_MIN_LOGIN_SECS. Copies are deleted
-# on exit, even with AGENTMAIL_E2E_KEEP=1. Of kiro-cli's data dir only the
+# login that expires within AGENT_COMMUNICATION_E2E_MIN_LOGIN_SECS. Copies are deleted
+# on exit, even with AGENT_COMMUNICATION_E2E_KEEP=1. Of kiro-cli's data dir only the
 # runtimes it never writes (bun, node, tui.js, the versioned engine under
 # kas/) are linked in; its feed files are copied and the rest left out.
 # Secrets (the API key, opencode's server password) reach the harnesses
@@ -109,47 +109,47 @@ for tool in jq git cargo setsid; do
 done
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-TIMEOUT=${AGENTMAIL_E2E_TIMEOUT:-600}
-[[ $TIMEOUT =~ ^[1-9][0-9]*$ ]] || fail "AGENTMAIL_E2E_TIMEOUT=$TIMEOUT is not a positive number of seconds"
+TIMEOUT=${AGENT_COMMUNICATION_E2E_TIMEOUT:-600}
+[[ $TIMEOUT =~ ^[1-9][0-9]*$ ]] || fail "AGENT_COMMUNICATION_E2E_TIMEOUT=$TIMEOUT is not a positive number of seconds"
 # A run waits at most six times for TIMEOUT (A registers, B registers, the
 # answered question, B finishes, A finishes, A is woken), plus setup.
-MIN_LOGIN_SECS=${AGENTMAIL_E2E_MIN_LOGIN_SECS:-$((6 * TIMEOUT + 300))}
+MIN_LOGIN_SECS=${AGENT_COMMUNICATION_E2E_MIN_LOGIN_SECS:-$((6 * TIMEOUT + 300))}
 [[ $MIN_LOGIN_SECS =~ ^[0-9]+$ ]] ||
-    fail "AGENTMAIL_E2E_MIN_LOGIN_SECS=$MIN_LOGIN_SECS is not a number of seconds"
+    fail "AGENT_COMMUNICATION_E2E_MIN_LOGIN_SECS=$MIN_LOGIN_SECS is not a number of seconds"
 MIN_LOGIN_MS=$((MIN_LOGIN_SECS * 1000))
-MIN_LOGIN_TEXT="$((MIN_LOGIN_SECS / 60)) minutes ($MIN_LOGIN_SECS s, AGENTMAIL_E2E_MIN_LOGIN_SECS)"
+MIN_LOGIN_TEXT="$((MIN_LOGIN_SECS / 60)) minutes ($MIN_LOGIN_SECS s, AGENT_COMMUNICATION_E2E_MIN_LOGIN_SECS)"
 
 needs() { [ "$HA" = "$1" ] || [ "$HB" = "$1" ]; }
 
 # Resolve the harness binaries before anything is built or copied.
 if needs claude-code; then
-    CLAUDE_BIN=${AGENTMAIL_E2E_CLAUDE:-}
-    [ -n "$CLAUDE_BIN" ] || fail "set AGENTMAIL_E2E_CLAUDE to the Claude Code binary"
-    [ -x "$CLAUDE_BIN" ] || fail "AGENTMAIL_E2E_CLAUDE=$CLAUDE_BIN is not executable"
+    CLAUDE_BIN=${AGENT_COMMUNICATION_E2E_CLAUDE:-}
+    [ -n "$CLAUDE_BIN" ] || fail "set AGENT_COMMUNICATION_E2E_CLAUDE to the Claude Code binary"
+    [ -x "$CLAUDE_BIN" ] || fail "AGENT_COMMUNICATION_E2E_CLAUDE=$CLAUDE_BIN is not executable"
 fi
 if needs opencode; then
-    OPENCODE_BIN=${AGENTMAIL_E2E_OPENCODE:-$(command -v opencode || true)}
+    OPENCODE_BIN=${AGENT_COMMUNICATION_E2E_OPENCODE:-$(command -v opencode || true)}
     [ -n "$OPENCODE_BIN" ] && [ -x "$OPENCODE_BIN" ] ||
-        fail "opencode not found; set AGENTMAIL_E2E_OPENCODE"
-    OPENCODE_MODEL=${AGENTMAIL_E2E_OPENCODE_MODEL:-opencode/big-pickle}
+        fail "opencode not found; set AGENT_COMMUNICATION_E2E_OPENCODE"
+    OPENCODE_MODEL=${AGENT_COMMUNICATION_E2E_OPENCODE_MODEL:-opencode/big-pickle}
     command -v python3 >/dev/null || fail "python3 is required"
     if [ "$HA" = opencode ]; then
         command -v curl >/dev/null || fail "curl is required"
     fi
 fi
 if needs kiro; then
-    KIRO_BIN=${AGENTMAIL_E2E_KIRO:-$(command -v kiro-cli || true)}
+    KIRO_BIN=${AGENT_COMMUNICATION_E2E_KIRO:-$(command -v kiro-cli || true)}
     [ -n "$KIRO_BIN" ] && [ -x "$KIRO_BIN" ] ||
-        fail "kiro-cli not found; set AGENTMAIL_E2E_KIRO"
+        fail "kiro-cli not found; set AGENT_COMMUNICATION_E2E_KIRO"
     command -v python3 >/dev/null || fail "python3 is required to copy kiro's login"
 fi
 
 STEP=build
 (cd "$ROOT" && cargo build --release --quiet) || fail "cargo build failed"
-BIN=$ROOT/target/release/agentmail
+BIN=$ROOT/target/release/agent-communication
 
 STEP=setup
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/agentmail-e2e.XXXXXX") || fail "mktemp failed"
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/agent-communication-e2e.XXXXXX") || fail "mktemp failed"
 SECRETS=()
 # Each harness is started under setsid, so its pid is also the id of a
 # process group holding it and every descendant that stays in the group.
@@ -183,7 +183,7 @@ cleanup() {
         rm -f "$p"
     done
     rm -rf "${SOCKDIR:-}"
-    if [ "${AGENTMAIL_E2E_KEEP:-}" = 1 ]; then
+    if [ "${AGENT_COMMUNICATION_E2E_KEEP:-}" = 1 ]; then
         echo "e2e $MODE: kept $TMP" >&2
     else
         rm -rf "$TMP"
@@ -196,16 +196,16 @@ H=$TMP/home
 mkdir -p "$H/.config" "$H/.local/share" "$H/.local/state" "$H/.cache" \
     "$TMP/run" "$TMP/bin" "$TMP/data" "$TMP/logs"
 chmod 700 "$TMP/run"
-export AGENTMAIL_DATA_DIR=$TMP/data
+export AGENT_COMMUNICATION_DATA_DIR=$TMP/data
 # A unix socket path is limited to about 100 bytes, so the socket lives in
 # a short directory of its own.
 SOCKDIR=$(mktemp -d /tmp/am-e2e.XXXXXX) || fail "mktemp failed"
-export AGENTMAIL_SOCKET=$SOCKDIR/agentmail.sock
-ln -s "$BIN" "$TMP/bin/agentmail"
+export AGENT_COMMUNICATION_SOCKET=$SOCKDIR/agent-communication.sock
+ln -s "$BIN" "$TMP/bin/agent-communication"
 
 # The environment every harness (and install) runs with: nothing inherited
 # but PATH, the locale and an API key, so no outer session, login or
-# agentmail identity leaks in.
+# agent-communication identity leaks in.
 HENV=(
     "PATH=$TMP/bin:$PATH"
     "HOME=$H"
@@ -219,8 +219,8 @@ HENV=(
     "XDG_RUNTIME_DIR=$TMP/run"
     "CLAUDE_CONFIG_DIR=$H/.claude"
     "KIRO_HOME=$H/.kiro"
-    "AGENTMAIL_DATA_DIR=$AGENTMAIL_DATA_DIR"
-    "AGENTMAIL_SOCKET=$AGENTMAIL_SOCKET"
+    "AGENT_COMMUNICATION_DATA_DIR=$AGENT_COMMUNICATION_DATA_DIR"
+    "AGENT_COMMUNICATION_SOCKET=$AGENT_COMMUNICATION_SOCKET"
 )
 # Secrets are kept in unexported shell variables and exported only inside
 # henv's subshell, so they never appear on a command line (`env -i
@@ -257,8 +257,8 @@ setup_claude() {
     ln -s "$CLAUDE_BIN" "$TMP/bin/claude"
     mkdir -p "$H/.claude"
     if [ -z "$E2E_API_KEY" ]; then
-        local src=${AGENTMAIL_E2E_CLAUDE_CREDENTIALS:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json}
-        [ -r "$src" ] || fail "no Claude Code login at $src (set AGENTMAIL_E2E_CLAUDE_CREDENTIALS or ANTHROPIC_API_KEY)"
+        local src=${AGENT_COMMUNICATION_E2E_CLAUDE_CREDENTIALS:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json}
+        [ -r "$src" ] || fail "no Claude Code login at $src (set AGENT_COMMUNICATION_E2E_CLAUDE_CREDENTIALS or ANTHROPIC_API_KEY)"
         local exp
         exp=$(jq -r '.claudeAiOauth.expiresAt // 0' "$src") || fail "cannot read $src"
         [ "$exp" -gt $(($(now_ms) + MIN_LOGIN_MS)) ] ||
@@ -278,7 +278,7 @@ setup_opencode() {
     # opencode keeps its login (an OpenCode account, the `opencode`
     # provider) in the `credential` table of its database. Without one only
     # the free models work, so the login is copied in when there is one.
-    local src=${AGENTMAIL_E2E_OPENCODE_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/opencode}/opencode.db
+    local src=${AGENT_COMMUNICATION_E2E_OPENCODE_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/opencode}/opencode.db
     [ -r "$src" ] || return 0
     local db=$H/.local/share/opencode/opencode.db
     # Let opencode create its own database (schema and migrations) first,
@@ -338,8 +338,8 @@ EOF
 }
 
 setup_kiro() {
-    local src=${AGENTMAIL_E2E_KIRO_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/kiro-cli}
-    [ -r "$src/data.sqlite3" ] || fail "no kiro-cli login in $src (set AGENTMAIL_E2E_KIRO_DATA)"
+    local src=${AGENT_COMMUNICATION_E2E_KIRO_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/kiro-cli}
+    [ -r "$src/data.sqlite3" ] || fail "no kiro-cli login in $src (set AGENT_COMMUNICATION_E2E_KIRO_DATA)"
     local dst=$H/.local/share/kiro-cli
     mkdir -p "$dst"
     # Only what kiro-cli never writes is linked in: its runtimes and the
@@ -438,8 +438,8 @@ start_agent() {
     local who=$1 harness=$2 prompt=$3 out=$TMP/logs/$1.out
     case $harness in
     claude-code)
-        (cd "$REPO" && henv setsid claude -p --model "${AGENTMAIL_E2E_CLAUDE_MODEL:-haiku}" \
-            --output-format json --allowedTools "mcp__agentmail,Bash" -- "$prompt" \
+        (cd "$REPO" && henv setsid claude -p --model "${AGENT_COMMUNICATION_E2E_CLAUDE_MODEL:-haiku}" \
+            --output-format json --allowedTools "mcp__agent-communication,Bash" -- "$prompt" \
             >"$out" 2>"$out.err") &
         ;;
     opencode)
@@ -516,7 +516,7 @@ qa_thread() {
     return 1
 }
 
-# session_of <address>: the harness session agentmail recorded for it.
+# session_of <address>: the harness session agent-communication recorded for it.
 session_of() {
     human agents --json --all 2>/dev/null |
         jq -r --arg a "$1" '.[] | select(.address == $a) | .session.id // empty'
@@ -530,7 +530,7 @@ mentions() {
     grep -q -- "$token" "$TMP/logs/$who.out" "$TMP/logs/$who.out.err" 2>/dev/null && return 0
     case $harness in
     claude-code)
-        # `-p --output-format json` names the session; agentmail's record
+        # `-p --output-format json` names the session; agent-communication's record
         # of it is the fallback.
         sess=$(jq -r '.session_id // empty' "$TMP/logs/$who.out" 2>/dev/null)
         [ -n "$sess" ] || sess=$(session_of "$addr")
@@ -567,7 +567,7 @@ PY
 
 # session_mentions_kiro <before, ms> <token>: a kiro session that began
 # before the given time (A's: B starts only once A has registered) mentions
-# the token. agentmail records no session for kiro agents, and kiro V3
+# the token. agent-communication records no session for kiro agents, and kiro V3
 # keeps each session in KIRO_HOME/sessions/<workspace>/sess_<id>/, its
 # session.json giving createdAt.
 session_mentions_kiro() {
@@ -643,19 +643,19 @@ woken() {
 TOKEN=urgent-$RANDOM$RANDOM
 WAKE_TOKEN=woken-$RANDOM$RANDOM
 
-PROMPT_A="You are backend. Use your agentmail MCP tools (named like register, \
-agentmail_register, mcp__agentmail__register or @agentmail/register, depending \
+PROMPT_A="You are backend. Use your agent-communication MCP tools (named like register, \
+agent-communication_register, mcp__agent-communication__register or @agent-communication/register, depending \
 on the harness): register with the name backend, \
 then coordinate with frontend and answer its questions. Call wait_for_mail \
 (timeout_secs 120) until frontend asks you something, then answer it with: \
 POST /orders takes items (an array of {sku, qty}) and amount_cents (an integer). \
 After answering, run the shell command \`sleep 20\`, then the shell command \
 \`echo finished\`. End with a one-line summary that quotes the subject of every \
-agentmail message you saw, including urgent ones. Whenever you are told of \
-new agentmail mail later, read it and do what it asks."
+agent-communication message you saw, including urgent ones. Whenever you are told of \
+new agent-communication mail later, read it and do what it asks."
 
-PROMPT_B="You are frontend. Use your agentmail MCP tools (named like register, \
-agentmail_register, mcp__agentmail__register or @agentmail/register, depending \
+PROMPT_B="You are frontend. Use your agent-communication MCP tools (named like register, \
+agent-communication_register, mcp__agent-communication__register or @agent-communication/register, depending \
 on the harness): register with the name \
 frontend, then ask backend (with the ask tool, to backend) what fields \
 POST /orders takes, and wait for the answer. Report the answer in one line."
@@ -706,7 +706,7 @@ if [ "$HA" = opencode ]; then
     sleep 10
     WAKE_SENT=$(now_ms)
     WAKE_THREAD=$(human send --to "$ADDR_A" --subject "ping $WAKE_TOKEN" \
-        --body "Reply to this message (agentmail reply) with the body: pong $WAKE_TOKEN" --json |
+        --body "Reply to this message (agent-communication reply) with the body: pong $WAKE_TOKEN" --json |
         jq -r '.thread_id // .id // empty')
     [ -n "$WAKE_THREAD" ] || fail "sending the wake mail failed"
     wait_until "$TIMEOUT" "idle A to be woken for thread $WAKE_THREAD" woken

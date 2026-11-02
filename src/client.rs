@@ -154,16 +154,16 @@ pub struct Client {
     streaming: bool,
 }
 
-/// The binary to run as `daemon run`: `AGENTMAIL_BIN` if set and non-empty,
+/// The binary to run as `daemon run`: `AGENT_COMMUNICATION_BIN` if set and non-empty,
 /// else this executable.
 pub fn daemon_bin() -> Result<PathBuf> {
-    daemon_bin_from(std::env::var_os("AGENTMAIL_BIN"))
+    daemon_bin_from(std::env::var_os("AGENT_COMMUNICATION_BIN"))
 }
 
 fn daemon_bin_from(env: Option<OsString>) -> Result<PathBuf> {
     match env.filter(|v| !v.is_empty()) {
         Some(bin) => Ok(PathBuf::from(bin)),
-        None => std::env::current_exe().context("locating the agentmail executable"),
+        None => std::env::current_exe().context("locating the agent-communication executable"),
     }
 }
 
@@ -190,8 +190,8 @@ fn spawn_daemon(paths: &Paths, bin: &Path) -> Result<()> {
     use std::os::unix::process::CommandExt;
     let mut child = std::process::Command::new(bin)
         .args(["daemon", "run"])
-        .env("AGENTMAIL_DATA_DIR", &paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &paths.socket)
+        .env("AGENT_COMMUNICATION_DATA_DIR", &paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &paths.socket)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -248,7 +248,7 @@ impl std::fmt::Display for DataDirMismatch {
             Some(theirs) => write!(
                 f,
                 "the daemon at {} serves data directory {}, not {}; set \
-                 AGENTMAIL_SOCKET so each data directory has its own socket",
+                 AGENT_COMMUNICATION_SOCKET so each data directory has its own socket",
                 self.socket.display(),
                 theirs.display(),
                 self.ours.display()
@@ -256,7 +256,7 @@ impl std::fmt::Display for DataDirMismatch {
             None => write!(
                 f,
                 "the daemon at {} did not report its data directory (expected {}); \
-                 stop it with `agentmail daemon stop`",
+                 stop it with `agent-communication daemon stop`",
                 self.socket.display(),
                 self.ours.display()
             ),
@@ -572,8 +572,8 @@ impl Client {
     fn other_version(paths: &Paths) -> String {
         format!(
             "the daemon at {} speaks another protocol version; is another \
-             agentmail binary serving it (e.g. a systemd unit's ExecStart, or \
-             AGENTMAIL_BIN)? Run the same agentmail everywhere",
+             agent-communication binary serving it (e.g. a systemd unit's ExecStart, or \
+             AGENT_COMMUNICATION_BIN)? Run the same agent-communication everywhere",
             paths.socket.display()
         )
     }
@@ -604,7 +604,9 @@ impl Client {
             // removes) cannot cut short a start that will succeed; one
             // stamped early by a coarse file clock waits for the deadline.
             if let Some(why) = fresh_startup_error(paths, first_spawn, Duration::ZERO) {
-                return Err(anyhow!("the agentmail daemon failed to start: {why}"));
+                return Err(anyhow!(
+                    "the agent-communication daemon failed to start: {why}"
+                ));
             }
             if Instant::now() >= deadline {
                 let held = paths.lock_held();
@@ -624,7 +626,9 @@ impl Client {
                     // (it has no stderr); one respawned since may still
                     // hold the lock as it fails the same way. That reason
                     // stands alone: the failed connect adds only noise.
-                    return Err(anyhow!("the agentmail daemon failed to start: {why}"));
+                    return Err(anyhow!(
+                        "the agent-communication daemon failed to start: {why}"
+                    ));
                 } else if ours {
                     // It serves our socket but no longer listens: it is
                     // still finishing in-flight requests.
@@ -639,14 +643,14 @@ impl Client {
                     // directory.
                     format!(
                         "a daemon holds {} but is not listening on {}; check \
-                         AGENTMAIL_SOCKET/XDG_RUNTIME_DIR (every client sharing a \
+                         AGENT_COMMUNICATION_SOCKET/XDG_RUNTIME_DIR (every client sharing a \
                          data directory must resolve the same socket)",
                         paths.lock.display(),
                         paths.socket.display()
                     )
                 } else {
                     format!(
-                        "the agentmail daemon did not start (socket {})",
+                        "the agent-communication daemon did not start (socket {})",
                         paths.socket.display()
                     )
                 };
@@ -846,22 +850,25 @@ mod tests {
         let link = tmp.path().join("link");
         std::os::unix::fs::symlink(&real, &link).unwrap();
         let mut paths = Paths::in_dir(tmp.path());
-        paths.socket = link.join("agentmail.sock");
+        paths.socket = link.join("agent-communication.sock");
         let rec = |socket: PathBuf| LockRecord {
             supervised: false,
             pid: std::process::id(),
             socket,
         };
         assert!(!paths.socket.exists());
-        assert!(serves_our_socket(&paths, &rec(real.join("agentmail.sock"))));
         assert!(serves_our_socket(
             &paths,
-            &rec(link.join("./agentmail.sock"))
+            &rec(real.join("agent-communication.sock"))
+        ));
+        assert!(serves_our_socket(
+            &paths,
+            &rec(link.join("./agent-communication.sock"))
         ));
         assert!(!serves_our_socket(&paths, &rec(real.join("other.sock"))));
         assert!(!serves_our_socket(
             &paths,
-            &rec(tmp.path().join("agentmail.sock"))
+            &rec(tmp.path().join("agent-communication.sock"))
         ));
     }
 
@@ -1026,9 +1033,10 @@ mod tests {
             }
         });
         // Starting a daemon would fail: there is no such binary.
-        let c = Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agentmail"))
-            .await
-            .expect("took the stopped daemon for a successor of another version");
+        let c =
+            Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agent-communication"))
+                .await
+                .expect("took the stopped daemon for a successor of another version");
         drop(c);
         old_and_new.await.unwrap();
     }
@@ -1036,8 +1044,8 @@ mod tests {
     #[test]
     fn client_daemon_bin_prefers_env_override() {
         assert_eq!(
-            daemon_bin_from(Some("/opt/agentmail".into())).unwrap(),
-            PathBuf::from("/opt/agentmail")
+            daemon_bin_from(Some("/opt/agent-communication".into())).unwrap(),
+            PathBuf::from("/opt/agent-communication")
         );
         let exe = std::env::current_exe().unwrap();
         assert_eq!(daemon_bin_from(Some("".into())).unwrap(), exe);
@@ -1056,7 +1064,7 @@ mod tests {
         assert_eq!(err.ours, PathBuf::from("/data/a"));
         let msg = err.to_string();
         assert!(msg.contains("/data/b") && msg.contains("/data/a"), "{msg}");
-        assert!(msg.contains("AGENTMAIL_SOCKET"), "{msg}");
+        assert!(msg.contains("AGENT_COMMUNICATION_SOCKET"), "{msg}");
 
         let err = check_data_dir(&paths, &serde_json::json!({ "version": 1 })).unwrap_err();
         assert_eq!(err.theirs, None);
@@ -1068,14 +1076,14 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let mut paths = Paths::in_dir(tmp.path());
         paths.socket = tmp.path().join("s".repeat(120));
-        let bin = Path::new("/nonexistent/agentmail");
+        let bin = Path::new("/nonexistent/agent-communication");
         let err = Client::connect_or_spawn_with(&paths, bin)
             .await
             .err()
             .expect("a too-long socket path must fail");
         let msg = format!("{err:#}");
         assert!(msg.contains("too long"), "{msg}");
-        assert!(msg.contains("AGENTMAIL_SOCKET"), "{msg}");
+        assert!(msg.contains("AGENT_COMMUNICATION_SOCKET"), "{msg}");
     }
 
     #[test]
