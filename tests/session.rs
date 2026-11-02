@@ -5,10 +5,10 @@ mod common;
 use std::path::Path;
 use std::process::{Child, Command};
 
-use agentmail::client::Client;
-use agentmail::model::{Harness, ProcId, SessionKey};
-use agentmail::procinfo;
-use agentmail::protocol::{Caller, Envelope, ErrorCode, Request, Response};
+use agent_communication::client::Client;
+use agent_communication::model::{Harness, ProcId, SessionKey};
+use agent_communication::procinfo;
+use agent_communication::protocol::{Caller, Envelope, ErrorCode, Request, Response};
 use common::{TestDaemon, send_req};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -565,7 +565,7 @@ async fn hook_status_unregistered_is_no_identity() {
     c.call(&session("s1"), Request::Signoff).await.unwrap();
     let err = c.call(&session("s1"), hook_status(true)).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::NoIdentity);
-    // Even when addressed directly (AGENTMAIL_ADDRESS), so the hook stays
+    // Even when addressed directly (AGENT_COMMUNICATION_ADDRESS), so the hook stays
     // silent and its wake loop ends.
     let err = c
         .call(&Caller::Address { address: a }, hook_status(true))

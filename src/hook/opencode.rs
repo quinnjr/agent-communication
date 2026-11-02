@@ -1,5 +1,5 @@
-//! opencode's hook output: JSON for the agentmail plugin
-//! (`plugin/agentmail.js`), which opencode loads in its shared process and
+//! opencode's hook output: JSON for the agent-communication plugin
+//! (`plugin/agent-communication.js`), which opencode loads in its shared process and
 //! which runs these hooks for one session at a time (`--session`). See
 //! docs/harness-notes.md, "opencode plugin".
 //!

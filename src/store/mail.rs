@@ -1098,7 +1098,7 @@ mod tests {
     #[test]
     fn delivery_records_urgency_as_a_mailbox_flag() {
         let dir = tempfile::TempDir::new().unwrap();
-        let s = Store::open(&dir.path().join("agentmail.redb")).unwrap();
+        let s = Store::open(&dir.path().join("agent-communication.redb")).unwrap();
         let a = agent(&s, "backend");
         let b = agent(&s, "frontend");
         let u = s.insert_message(new_message(&a, &[&b], true), 1).unwrap();
@@ -1146,7 +1146,7 @@ mod tests {
     #[test]
     fn mark_read_of_read_or_foreign_ids_takes_no_write_transaction() {
         let dir = tempfile::TempDir::new().unwrap();
-        let s = Store::open(&dir.path().join("agentmail.redb")).unwrap();
+        let s = Store::open(&dir.path().join("agent-communication.redb")).unwrap();
         let a = agent(&s, "backend");
         let b = agent(&s, "frontend");
         let m = s

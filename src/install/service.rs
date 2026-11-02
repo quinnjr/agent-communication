@@ -1,4 +1,4 @@
-//! `agentmail install --service` / `uninstall --service`: run the daemon
+//! `agent-communication install --service` / `uninstall --service`: run the daemon
 //! as a systemd user service.
 //!
 //! Install writes the unit from docs/daemon.md (its "Running the daemon under
@@ -10,7 +10,7 @@
 //! of the service (see [`orphan`]). Neither discards a unit of the user's
 //! (see [`plan`]). Both first check that the user's systemd manager is
 //! reachable, and otherwise give the steps to do
-//! by hand. `AGENTMAIL_SYSTEMCTL` names the `systemctl` to run (tests).
+//! by hand. `AGENT_COMMUNICATION_SYSTEMCTL` names the `systemctl` to run (tests).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,12 +21,12 @@ use anyhow::{Context, Result, anyhow, bail};
 use super::{Change, Env, backup_path, created_marker_path, read_opt, shell_quote};
 
 /// The unit's name, as `systemctl` takes it.
-pub const NAME: &str = "agentmail";
+pub const NAME: &str = "agent-communication";
 
 /// docs/daemon.md's unit, `ExecStart` aside (`{exec}`).
 const UNIT: &str = "\
 [Unit]
-Description=agentmail local agent mail daemon
+Description=agent-communication local agent communication daemon
 # Tolerate bursts of stops (e.g. several clients upgrading at once) but
 # still give up on a daemon that fails at every start; see below.
 StartLimitIntervalSec=60s
@@ -45,13 +45,13 @@ WantedBy=default.target
 
 /// The variables that move the daemon's data directory and socket away
 /// from their defaults.
-pub const LOCATION_VARS: [&str; 2] = ["AGENTMAIL_DATA_DIR", "AGENTMAIL_SOCKET"];
+pub const LOCATION_VARS: [&str; 2] = ["AGENT_COMMUNICATION_DATA_DIR", "AGENT_COMMUNICATION_SOCKET"];
 
 /// The variables the daemon's data directory and socket depend on (see
 /// [`crate::paths::Paths::from_vars`]).
 const PATH_VARS: [&str; 5] = [
-    "AGENTMAIL_DATA_DIR",
-    "AGENTMAIL_SOCKET",
+    "AGENT_COMMUNICATION_DATA_DIR",
+    "AGENT_COMMUNICATION_SOCKET",
     "XDG_DATA_HOME",
     "XDG_RUNTIME_DIR",
     "HOME",
@@ -275,7 +275,7 @@ pub fn default_paths(env: &Env) -> Option<crate::paths::Paths> {
 /// Where the service's daemon runs: from its environment `service` (see
 /// [`service_env`]), or, when that cannot be told, the default location
 /// here (see [`default_paths`]). Nothing when it cannot be resolved (say,
-/// a relative `AGENTMAIL_DATA_DIR`, which the daemon refuses).
+/// a relative `AGENT_COMMUNICATION_DATA_DIR`, which the daemon refuses).
 pub fn service_paths(env: &Env, service: Option<&ServiceEnv>) -> Option<crate::paths::Paths> {
     match service {
         Some(s) => crate::paths::Paths::from_vars(|k| s.get(k).map(std::ffi::OsString::from)).ok(),
@@ -297,8 +297,11 @@ pub fn stop_env(env: &Env, service: &crate::paths::Paths) -> StopEnv {
         unset_env(&location_overrides(env))
     } else {
         vec![
-            ("AGENTMAIL_DATA_DIR", Some(service.data_dir.clone())),
-            ("AGENTMAIL_SOCKET", Some(service.socket.clone())),
+            (
+                "AGENT_COMMUNICATION_DATA_DIR",
+                Some(service.data_dir.clone()),
+            ),
+            ("AGENT_COMMUNICATION_SOCKET", Some(service.socket.clone())),
         ]
     }
 }
@@ -375,7 +378,7 @@ pub fn overrides_unlike_service(env: &Env, service: Option<&ServiceEnv>) -> Vec<
 /// [`overrides_unlike_service`], noted on their own) explain: a note
 /// saying where, and which variables the service gets differently from
 /// this shell. Say, the manager's `XDG_RUNTIME_DIR` (which an ssh session
-/// without pam_systemd may not share), or an `AGENTMAIL_DATA_DIR` a
+/// without pam_systemd may not share), or an `AGENT_COMMUNICATION_DATA_DIR` a
 /// drop-in sets and this shell does not. Nothing when the service's
 /// environment cannot be told (see [`service_env`]).
 pub fn location_mismatch(
@@ -497,7 +500,7 @@ fn on_search_path(search: &str, dir: &Path) -> bool {
 /// When the systemd user manager does not load user units from the
 /// directory the unit goes in here (its own `XDG_CONFIG_HOME`, or `HOME`,
 /// differs from this shell's), as its unit search path says (see
-/// `manager_unit_path`): why agentmail refuses, since the manager would
+/// `manager_unit_path`): why agent-communication refuses, since the manager would
 /// never see the unit (and `enable` it, which the manager does). Nothing
 /// when the directory is on that path, or the manager cannot be asked.
 pub fn config_mismatch(env: &Env) -> Option<String> {
@@ -507,7 +510,7 @@ pub fn config_mismatch(env: &Env) -> Option<String> {
         return None;
     }
     Some(format!(
-        "the systemd user manager does not load user units from {}, where agentmail would put \
+        "the systemd user manager does not load user units from {}, where agent-communication would put \
          the unit (from XDG_CONFIG_HOME or HOME here), so it would never see it: the manager's \
          own XDG_CONFIG_HOME or HOME differs from this shell's (`systemctl --user show -p \
          UnitPath` lists where it looks). Run this with XDG_CONFIG_HOME and HOME set as the \
@@ -523,10 +526,10 @@ pub fn config_mismatch(env: &Env) -> Option<String> {
 /// (`std::env::current_exe`, symlinks resolved). Fails when this binary
 /// was removed or replaced while running.
 pub fn binary(env: &Env, argv0: Option<&std::ffi::OsStr>) -> Result<PathBuf> {
-    let exe = std::env::current_exe().context("locating the agentmail binary")?;
+    let exe = std::env::current_exe().context("locating the agent-communication binary")?;
     if exe.to_string_lossy().ends_with(" (deleted)") || !exe.is_file() {
         bail!(
-            "the running agentmail binary {} was removed or replaced; run the installed one",
+            "the running agent-communication binary {} was removed or replaced; run the installed one",
             exe.display()
         );
     }
@@ -564,12 +567,12 @@ fn invoked(env: &Env, argv0: &Path) -> Option<PathBuf> {
     Some(p.components().collect())
 }
 
-/// Whether `text` is the unit agentmail writes, for any binary.
+/// Whether `text` is the unit agent-communication writes, for any binary.
 pub fn is_generated(text: &str) -> bool {
     generated_exec(text).is_some()
 }
 
-/// The `ExecStart` binary of `text`, when it is the unit agentmail writes
+/// The `ExecStart` binary of `text`, when it is the unit agent-communication writes
 /// (see [`is_generated`]).
 fn generated_exec(text: &str) -> Option<&str> {
     let (head, tail) = UNIT.split_once("{exec}").expect("the unit has {exec}");
@@ -578,9 +581,9 @@ fn generated_exec(text: &str) -> Option<&str> {
         .filter(|exec| !exec.is_empty() && !exec.contains('\n'))
 }
 
-/// Whether `exec` is an `ExecStart` binary agentmail writes (see
+/// Whether `exec` is an `ExecStart` binary agent-communication writes (see
 /// [`exec_arg`]): an absolute path with every `%` doubled, quoted only
-/// when it must be. Not, say, docs/daemon.md's `%h/.cargo/bin/agentmail`.
+/// when it must be. Not, say, docs/daemon.md's `%h/.cargo/bin/agent-communication`.
 fn written_exec(exec: &str) -> bool {
     let unquoted = match exec.strip_prefix('"').and_then(|e| e.strip_suffix('"')) {
         Some(inner) => {
@@ -625,16 +628,19 @@ pub fn unit(bin: &Path) -> Result<String> {
 fn exec_arg(bin: &Path) -> Result<String> {
     if !bin.is_absolute() {
         bail!(
-            "the agentmail binary path {} is not absolute",
+            "the agent-communication binary path {} is not absolute",
             bin.display()
         );
     }
-    let s = bin
-        .to_str()
-        .ok_or_else(|| anyhow!("the agentmail binary path {} is not UTF-8", bin.display()))?;
+    let s = bin.to_str().ok_or_else(|| {
+        anyhow!(
+            "the agent-communication binary path {} is not UTF-8",
+            bin.display()
+        )
+    })?;
     if s.chars().any(char::is_control) {
         bail!(
-            "the agentmail binary path {} holds a control character, which a systemd unit cannot",
+            "the agent-communication binary path {} holds a control character, which a systemd unit cannot",
             s.escape_debug()
         );
     }
@@ -649,14 +655,14 @@ fn exec_arg(bin: &Path) -> Result<String> {
     })
 }
 
-/// Where the unit goes: `$XDG_CONFIG_HOME/systemd/user/agentmail.service`,
+/// Where the unit goes: `$XDG_CONFIG_HOME/systemd/user/agent-communication.service`,
 /// else under `~/.config`. A relative `XDG_CONFIG_HOME` is ignored, as the
 /// XDG spec says and systemd does.
 pub fn unit_path(env: &Env) -> PathBuf {
     unit_dir(env.var("XDG_CONFIG_HOME"), &env.home).join(format!("{NAME}.service"))
 }
 
-/// The drop-in directory of the unit at `path` (`agentmail.service.d`,
+/// The drop-in directory of the unit at `path` (`agent-communication.service.d`,
 /// where `systemctl --user edit` puts `override.conf`). Install and
 /// uninstall never touch it, so the user's settings there outlive both.
 pub fn dropin_dir(path: &Path) -> PathBuf {
@@ -665,7 +671,7 @@ pub fn dropin_dir(path: &Path) -> PathBuf {
     path.with_file_name(name)
 }
 
-/// The settings of the unit `text` (one install replaces) that agentmail's
+/// The settings of the unit `text` (one install replaces) that agent-communication's
 /// unit for `bin` lacks, `ExecStart` aside: say, an `Environment=` line,
 /// which the service no longer gets once it is replaced.
 pub fn dropped_settings(text: &str, bin: &Path) -> Vec<String> {
@@ -695,17 +701,17 @@ pub fn environment_line(k: &str, v: &str) -> String {
 
 /// The change that installs the unit for `bin` (none when it is already
 /// there), or, on uninstall, removes it (none when it is not there). A
-/// unit that was there before agentmail's is kept as its backup, also once
+/// unit that was there before agent-communication's is kept as its backup, also once
 /// the service is uninstalled.
 ///
-/// Only agentmail's own unit is replaced or removed as is: the unit it
+/// Only agent-communication's own unit is replaced or removed as is: the unit it
 /// created (its marker says so; whatever its `ExecStart`), or the one it
 /// wrote over a unit of the user's, which is kept as the backup (its
-/// `ExecStart` one agentmail writes, see `written_exec`). Any other
+/// `ExecStart` one agent-communication writes, see `written_exec`). Any other
 /// unit is the user's, also one written by hand from docs/daemon.md: install
-/// saves it as the backup, replacing any older backup of agentmail's, and
+/// saves it as the backup, replacing any older backup of agent-communication's, and
 /// uninstall saves it as the backup before removing it when it matches
-/// docs/daemon.md's unit (see [`is_generated`]) or agentmail created it (it
+/// docs/daemon.md's unit (see [`is_generated`]) or agent-communication created it (it
 /// was then edited). Both refuse when a different earlier unit is kept as
 /// the backup, and uninstall refuses to remove any other unit.
 pub fn plan(bin: &Path, env: &Env, install: bool) -> Result<Vec<Change>> {
@@ -734,15 +740,15 @@ pub fn plan(bin: &Path, env: &Env, install: bool) -> Result<Vec<Change>> {
         return Ok(vec![c]);
     }
     if install && created {
-        // agentmail's unit, edited by the user beyond its `ExecStart`:
+        // agent-communication's unit, edited by the user beyond its `ExecStart`:
         // replacing it would silently drop what the edits configure (say,
         // the `Environment=` that moves the daemon's data directory).
         bail!(
-            "{} is the unit agentmail installed, edited since; installing would drop these \
-             edits, so agentmail leaves the unit and nothing was changed:\n{}\
+            "{} is the unit agent-communication installed, edited since; installing would drop these \
+             edits, so agent-communication leaves the unit and nothing was changed:\n{}\
              Keep such settings in a drop-in, which install and uninstall never touch: run \
              `systemctl --user edit {NAME}` (it saves {}), put them there, then remove the \
-             unit (rm {}) and run `agentmail install --service` again.",
+             unit (rm {}) and run `agent-communication install --service` again.",
             c.path.display(),
             super::diff(&c),
             dropin_dir(&c.path).join("override.conf").display(),
@@ -758,13 +764,13 @@ pub fn plan(bin: &Path, env: &Env, install: bool) -> Result<Vec<Change>> {
     let saved = backup.as_deref() == Some(text.as_bytes());
     if backup.is_some() && !saved {
         if generated.is_some_and(written_exec) {
-            // agentmail's unit, written over the user's kept as the backup.
+            // agent-communication's unit, written over the user's kept as the backup.
             return Ok(vec![c]);
         }
         if install {
             bail!(
-                "{} is not the unit agentmail writes, and {} already keeps a different earlier \
-                 unit; agentmail replaces neither. Move one of them away and run the command \
+                "{} is not the unit agent-communication writes, and {} already keeps a different earlier \
+                 unit; agent-communication replaces neither. Move one of them away and run the command \
                  again. Nothing was changed.",
                 c.path.display(),
                 bak.display()
@@ -776,13 +782,13 @@ pub fn plan(bin: &Path, env: &Env, install: bool) -> Result<Vec<Change>> {
         // install recorded.
         c.record_anew = true;
     } else if backup.is_none() && (generated.is_some() || created) {
-        // docs/daemon.md's unit, written by hand, or agentmail's with the
+        // docs/daemon.md's unit, written by hand, or agent-communication's with the
         // user's edits: removed, but kept.
         c.save = Some(bak);
     } else if !saved {
         bail!(
-            "{} is not the unit agentmail installs (it was edited, or agentmail did not write \
-             it), so agentmail leaves it; nothing was changed. To remove it anyway, run:\n{}",
+            "{} is not the unit agent-communication installs (it was edited, or agent-communication did not write \
+             it), so agent-communication leaves it; nothing was changed. To remove it anyway, run:\n{}",
             c.path.display(),
             removal_steps(&c.path)
         );
@@ -791,14 +797,14 @@ pub fn plan(bin: &Path, env: &Env, install: bool) -> Result<Vec<Change>> {
 }
 
 /// The commands that remove the unit at `path` by hand, with the files
-/// agentmail keeps next to it: its marker (which a later install or
+/// agent-communication keeps next to it: its marker (which a later install or
 /// uninstall would trust) and, if any, the unit that was there before
-/// agentmail's, kept as its backup.
+/// agent-communication's, kept as its backup.
 fn removal_steps(path: &Path) -> String {
     let q = |p: &Path| shell_quote(&p.to_string_lossy());
     format!(
         "  systemctl --user disable --now {NAME}\n  rm {}\n  rm -f {}\n  systemctl --user \
-         daemon-reload\nA unit kept as {} is the one that was there before agentmail's: to \
+         daemon-reload\nA unit kept as {} is the one that was there before agent-communication's: to \
          restore it, move it back to {} before the daemon-reload; otherwise remove it too.\n",
         q(path),
         q(&created_marker_path(path)),
@@ -922,7 +928,7 @@ fn fragment(env: &Env) -> Result<Option<PathBuf>> {
 }
 
 /// Install, with the service running and its unit file already as
-/// agentmail would write it for `bin`: whether the running service is
+/// agent-communication would write it for `bin`: whether the running service is
 /// still on something else, so that it must be restarted all the same
 /// (say, a previous install wrote the unit over docs/daemon.md's, then its
 /// `daemon-reload`, `enable` or `try-restart` failed). It is when systemd
@@ -983,13 +989,13 @@ fn started_before_written(env: &Env, unit: &Path) -> bool {
         .is_some_and(|written| started < written.as_secs())
 }
 
-/// Uninstall, with no unit file: what systemd still has of agentmail's
+/// Uninstall, with no unit file: what systemd still has of agent-communication's
 /// service, if anything (see [`Orphan`]), and a note on a service named
-/// `agentmail` it leaves alone as not agentmail's. The running service is
-/// agentmail's only when systemd has no unit file for it any more, or
+/// `agent-communication` it leaves alone as not agent-communication's. The running service is
+/// agent-communication's only when systemd has no unit file for it any more, or
 /// loads it from [`unit_path`] (not yet reloaded); one loaded from
 /// elsewhere (say, `~/.local/share/systemd/user` or a package's) is the
-/// user's. Likewise the `default.target.wants` link is agentmail's only
+/// user's. Likewise the `default.target.wants` link is agent-communication's only
 /// when it points to [`unit_path`] (it may dangle there). Both compare
 /// with symlinks resolved, in the unit's directory too (see
 /// `same_file`), as the unit search path check does.
@@ -1004,7 +1010,7 @@ pub fn orphan(env: &Env) -> (Option<Orphan>, Option<String>) {
                 Some(wants)
             } else {
                 left.push(format!(
-                    "the link {} points to {}, not agentmail's unit",
+                    "the link {} points to {}, not agent-communication's unit",
                     wants.display(),
                     target.display()
                 ));
@@ -1019,9 +1025,9 @@ pub fn orphan(env: &Env) -> (Option<Orphan>, Option<String>) {
             Ok(Some(f)) if same_file(&f, &unit) => true,
             Ok(Some(f)) => {
                 left.push(format!(
-                    "the running service {NAME} is loaded from {}, not from agentmail's unit",
+                    "the running service {NAME} is loaded from {}, not from agent-communication's unit",
                     if f.as_os_str().is_empty() {
-                        "no unit file agentmail knows".to_string()
+                        "no unit file agent-communication knows".to_string()
                     } else {
                         f.display().to_string()
                     }
@@ -1030,7 +1036,7 @@ pub fn orphan(env: &Env) -> (Option<Orphan>, Option<String>) {
             }
             Err(e) => {
                 left.push(format!(
-                    "the service {NAME} is running, but whether it is agentmail's could not be \
+                    "the service {NAME} is running, but whether it is agent-communication's could not be \
                      told ({e:#})"
                 ));
                 false
@@ -1038,7 +1044,7 @@ pub fn orphan(env: &Env) -> (Option<Orphan>, Option<String>) {
         };
     let note = (!left.is_empty()).then(|| {
         format!(
-            "{}; agentmail did not install it, so it is left alone.",
+            "{}; agent-communication did not install it, so it is left alone.",
             left.join(", and ")
         )
     });
@@ -1084,9 +1090,9 @@ pub fn clean_orphan(env: &Env, o: &Orphan) -> Result<()> {
     user_systemctl(env, &["daemon-reload"])
 }
 
-/// The `systemctl` to run: `AGENTMAIL_SYSTEMCTL`, else `systemctl`.
+/// The `systemctl` to run: `AGENT_COMMUNICATION_SYSTEMCTL`, else `systemctl`.
 fn systemctl(env: &Env) -> String {
-    env.var("AGENTMAIL_SYSTEMCTL")
+    env.var("AGENT_COMMUNICATION_SYSTEMCTL")
         .unwrap_or("systemctl")
         .to_string()
 }
@@ -1163,7 +1169,7 @@ pub fn unavailable(env: &Env) -> Option<String> {
 }
 
 /// What to do by hand for install (`install`) or uninstall, where the
-/// systemd user manager is not available to agentmail.
+/// systemd user manager is not available to agent-communication.
 pub fn manual(bin: &Path, env: &Env, install: bool) -> String {
     let path = unit_path(env);
     let steps = steps(
@@ -1236,7 +1242,7 @@ pub fn reload(env: &Env) -> Result<()> {
     user_systemctl(env, &["daemon-reload"])
 }
 
-/// Whether `path`'s original (a unit there before agentmail's) is kept.
+/// Whether `path`'s original (a unit there before agent-communication's) is kept.
 pub fn backup_kept(path: &Path) -> Option<PathBuf> {
     let bak = backup_path(path);
     std::fs::symlink_metadata(&bak).is_ok().then_some(bak)
@@ -1258,23 +1264,31 @@ mod tests {
     #[test]
     fn invoked_resolves_argv0() {
         let dir = tempfile::TempDir::new().unwrap();
-        let bin = dir.path().join("agentmail");
+        let bin = dir.path().join("agent-communication");
         std::fs::write(&bin, "").unwrap();
         let d = dir.path().to_str().unwrap();
         let e = env(d, &format!("relative:/nowhere:{d}"));
-        assert_eq!(invoked(&e, Path::new("agentmail")), Some(bin.clone()));
-        assert_eq!(invoked(&e, Path::new("./agentmail")), Some(bin.clone()));
+        assert_eq!(
+            invoked(&e, Path::new("agent-communication")),
+            Some(bin.clone())
+        );
+        assert_eq!(
+            invoked(&e, Path::new("./agent-communication")),
+            Some(bin.clone())
+        );
         assert_eq!(invoked(&e, Path::new(&bin)), Some(bin.clone()));
-        assert_eq!(invoked(&e, Path::new("../x/agentmail")), None);
+        assert_eq!(invoked(&e, Path::new("../x/agent-communication")), None);
         assert_eq!(invoked(&e, Path::new("other")), None);
         assert_eq!(invoked(&e, Path::new("")), None);
     }
 
     #[test]
     fn is_generated_takes_any_exec_start() {
-        assert!(is_generated(&unit(Path::new("/a b/agentmail")).unwrap()));
         assert!(is_generated(
-            &UNIT.replace("{exec}", "%h/.cargo/bin/agentmail")
+            &unit(Path::new("/a b/agent-communication")).unwrap()
+        ));
+        assert!(is_generated(
+            &UNIT.replace("{exec}", "%h/.cargo/bin/agent-communication")
         ));
         let edited = unit(Path::new("/x"))
             .unwrap()
@@ -1295,14 +1309,14 @@ mod tests {
     #[test]
     fn dropin_dir_is_next_to_the_unit() {
         assert_eq!(
-            dropin_dir(Path::new("/c/systemd/user/agentmail.service")),
-            Path::new("/c/systemd/user/agentmail.service.d")
+            dropin_dir(Path::new("/c/systemd/user/agent-communication.service")),
+            Path::new("/c/systemd/user/agent-communication.service.d")
         );
     }
 
     #[test]
-    fn dropped_settings_lists_what_agentmail_unit_lacks() {
-        let bin = Path::new("/x/agentmail");
+    fn dropped_settings_lists_what_agent_communication_unit_lacks() {
+        let bin = Path::new("/x/agent-communication");
         assert!(dropped_settings(&unit(bin).unwrap(), bin).is_empty());
         assert!(dropped_settings(&UNIT.replace("{exec}", "%h/a"), bin).is_empty());
         let mine = "[Service]\n# note\nExecStart=/old daemon run\nEnvironment=A=1\n\
@@ -1311,21 +1325,21 @@ mod tests {
     }
 
     #[test]
-    fn written_exec_takes_only_what_agentmail_writes() {
+    fn written_exec_takes_only_what_agent_communication_writes() {
         for bin in [
-            "/x/agentmail",
+            "/x/agent-communication",
             "/a b/agent\"mail",
-            "/p%q/agentmail",
+            "/p%q/agent-communication",
             "/a\\b",
         ] {
             let e = exec_arg(Path::new(bin)).unwrap();
             assert!(written_exec(&e), "{e}");
         }
         for e in [
-            "%h/.cargo/bin/agentmail",
-            "/x/%h/agentmail",
-            "x/agentmail",
-            "\"/x/agentmail\"",
+            "%h/.cargo/bin/agent-communication",
+            "/x/%h/agent-communication",
+            "x/agent-communication",
+            "\"/x/agent-communication\"",
             "\"/a b\\x\"",
             "/a b",
             "",
@@ -1353,13 +1367,16 @@ mod tests {
 
     #[test]
     fn env_file_vars_reads_only_what_it_can() {
-        let text = "# c\n; c\n\nOTHER=\"a\\b\"\nHOME=/h\n AGENTMAIL_DATA_DIR = \"/a b\"\n\
+        let text = "# c\n; c\n\nOTHER=\"a\\b\"\nHOME=/h\n AGENT_COMMUNICATION_DATA_DIR = \"/a b\"\n\
                     XDG_RUNTIME_DIR='/r$x'\n";
         assert_eq!(
             env_file_vars(text),
             Some(vec![
                 ("HOME".to_string(), "/h".to_string()),
-                ("AGENTMAIL_DATA_DIR".to_string(), "/a b".to_string()),
+                (
+                    "AGENT_COMMUNICATION_DATA_DIR".to_string(),
+                    "/a b".to_string()
+                ),
                 ("XDG_RUNTIME_DIR".to_string(), "/r$x".to_string()),
             ])
         );
@@ -1418,21 +1435,24 @@ mod tests {
 
     #[test]
     fn stop_command_shows_the_location_given() {
-        let bin = Path::new("/b/agentmail");
-        assert_eq!(stop_command(bin, &Vec::new()), "/b/agentmail daemon stop");
+        let bin = Path::new("/b/agent-communication");
+        assert_eq!(
+            stop_command(bin, &Vec::new()),
+            "/b/agent-communication daemon stop"
+        );
         assert_eq!(
             stop_command(bin, &unset_env(&LOCATION_VARS)),
-            "env -u AGENTMAIL_DATA_DIR -u AGENTMAIL_SOCKET /b/agentmail daemon stop"
+            "env -u AGENT_COMMUNICATION_DATA_DIR -u AGENT_COMMUNICATION_SOCKET /b/agent-communication daemon stop"
         );
         assert_eq!(
             stop_command(
                 bin,
                 &vec![
-                    ("AGENTMAIL_DATA_DIR", Some(PathBuf::from("/a b"))),
-                    ("AGENTMAIL_SOCKET", Some(PathBuf::from("/s"))),
+                    ("AGENT_COMMUNICATION_DATA_DIR", Some(PathBuf::from("/a b"))),
+                    ("AGENT_COMMUNICATION_SOCKET", Some(PathBuf::from("/s"))),
                 ]
             ),
-            "env 'AGENTMAIL_DATA_DIR=/a b' AGENTMAIL_SOCKET=/s /b/agentmail daemon stop"
+            "env 'AGENT_COMMUNICATION_DATA_DIR=/a b' AGENT_COMMUNICATION_SOCKET=/s /b/agent-communication daemon stop"
         );
     }
 }

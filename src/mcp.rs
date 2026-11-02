@@ -1,4 +1,4 @@
-//! `agentmail mcp`: a stdio MCP server that the harness spawns: one per
+//! `agent-communication mcp`: a stdio MCP server that the harness spawns: one per
 //! session under Claude Code and kiro, and one per working directory under
 //! opencode, shared by every opencode session there. Each tool forwards one
 //! request to the daemon (started on demand) and returns the daemon's JSON
@@ -7,7 +7,7 @@
 //!
 //! Identity, per tool call:
 //!
-//! - `AGENTMAIL_ADDRESS`, when set, overrides everything, including the
+//! - `AGENT_COMMUNICATION_ADDRESS`, when set, overrides everything, including the
 //!   address a `register` returns.
 //! - A call carrying an opencode session id in
 //!   `_meta["ai.opencode/sessionID"]` calls as that session
@@ -18,7 +18,7 @@
 //!   as the harness process it binds to (`Caller::Procs`), so a session that
 //!   registered before (or from a hook or shell) is found again. After a
 //!   `register` without a session it calls as the returned address (unless
-//!   `AGENTMAIL_ADDRESS` is set).
+//!   `AGENT_COMMUNICATION_ADDRESS` is set).
 //! - A server bound to a harness that shares its process between sessions
 //!   (opencode) refuses `register` without a session, so it never caches an
 //!   address, and tells any other sessionless call that it carried no
@@ -54,7 +54,7 @@ use crate::protocol::{Caller, ErrorCode, Request};
 
 /// The guidance every harness shows its agent at MCP initialize.
 pub const INSTRUCTIONS: &str = "\
-agentmail lets you coordinate with other coding agents on this machine by mail.
+agent-communication lets you coordinate with other coding agents on this machine by mail.
 - Only use it when the human asks you to coordinate with another agent. Then call `register` with a short role name (e.g. \"backend\") and a one-line `working_on` summary.
 - Find the partner the human named with `agents`, then `contacts add` its full address. If several agents match, choose by their working-on summaries; ask the human only if that does not settle it.
 - Before starting each new step of your work, check `inbox`. Answer questions addressed to you before continuing your own work; use `answer` to close a question, `reply` to ask for clarification.
@@ -109,8 +109,8 @@ pub struct RegisterParams {
     #[serde(default)]
     pub fresh: bool,
     /// Wake this agent for new mail (default true, except under kiro-cli,
-    /// where waking is opt-in: false unless agentmail was installed with
-    /// `--kiro-wake`). Always false when AGENTMAIL_WAKE=0 is set for the
+    /// where waking is opt-in: false unless agent-communication was installed with
+    /// `--kiro-wake`). Always false when AGENT_COMMUNICATION_WAKE=0 is set for the
     /// harness.
     #[serde(default)]
     pub wake: Option<bool>,
@@ -248,9 +248,9 @@ pub struct SearchParams {
 /// The MCP server: one per agent session under Claude Code and kiro, one
 /// per working directory, shared by all its sessions, under opencode.
 #[derive(Clone)]
-pub struct AgentMailServer {
+pub struct AgentCommunicationServer {
     paths: Paths,
-    /// Whether `AGENTMAIL_ADDRESS` overrides the caller of every call.
+    /// Whether `AGENT_COMMUNICATION_ADDRESS` overrides the caller of every call.
     address_env: bool,
     /// The caller of a call made outside any session.
     caller: Arc<Mutex<Caller>>,
@@ -268,9 +268,9 @@ pub struct AgentMailServer {
     tool_router: ToolRouter<Self>,
 }
 
-/// The caller before `register`: `AGENTMAIL_ADDRESS` when set (it
+/// The caller before `register`: `AGENT_COMMUNICATION_ADDRESS` when set (it
 /// overrides the process binding), else the parent process. Never the
-/// human: `AGENTMAIL_HUMAN` is ignored here, so an agent never acts with
+/// human: `AGENT_COMMUNICATION_HUMAN` is ignored here, so an agent never acts with
 /// the human's authority.
 fn initial_caller(address: Option<String>, parent: Option<ProcId>) -> Caller {
     match address.filter(|a| !a.is_empty()) {
@@ -334,8 +334,8 @@ fn invalid(message: impl Into<String>) -> CallToolResult {
     error_result(&ClientError::new(ErrorCode::InvalidInput, message))
 }
 
-impl AgentMailServer {
-    pub fn new(paths: Paths) -> AgentMailServer {
+impl AgentCommunicationServer {
+    pub fn new(paths: Paths) -> AgentCommunicationServer {
         let parent = procinfo::parent_pid(std::process::id());
         let bind = identity::mcp_bind(parent);
         // The same process `register` binds to (never init or a subreaper
@@ -348,7 +348,7 @@ impl AgentMailServer {
         // container's entry point): `bind` is then None, but a
         // sessionless call must still not register.
         let shared = Some(identity::mcp_harness(parent)).filter(|h| h.shares_process());
-        AgentMailServer {
+        AgentCommunicationServer {
             paths,
             address_env,
             caller: Arc::new(Mutex::new(caller)),
@@ -373,7 +373,7 @@ impl AgentMailServer {
 
     /// After a successful `register` returning `data`: a call made outside
     /// any session acts as the registered address from now on, unless
-    /// `AGENTMAIL_ADDRESS` overrides every call. A session's later calls
+    /// `AGENT_COMMUNICATION_ADDRESS` overrides every call. A session's later calls
     /// resolve through the daemon by session: the server is shared, so
     /// caching its address would hand it to every other session.
     fn remember_registered(&self, session: &CallSession, data: &Value) {
@@ -481,7 +481,7 @@ impl AgentMailServer {
 }
 
 #[tool_router]
-impl AgentMailServer {
+impl AgentCommunicationServer {
     #[tool(
         description = "Register this session as an agent. Returns its full address (`<name>-<id>`). Call once, when the human asks you to coordinate with another agent."
     )]
@@ -765,17 +765,20 @@ impl AgentMailServer {
 }
 
 #[tool_handler(router = self.tool_router)]
-impl ServerHandler for AgentMailServer {
+impl ServerHandler for AgentCommunicationServer {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("agentmail", env!("CARGO_PKG_VERSION")))
+            .with_server_info(Implementation::new(
+                "agent-communication",
+                env!("CARGO_PKG_VERSION"),
+            ))
             .with_instructions(INSTRUCTIONS)
     }
 }
 
 /// Serve MCP on stdin/stdout until the client goes away.
 pub async fn serve(paths: Paths) -> Result<()> {
-    let service = AgentMailServer::new(paths)
+    let service = AgentCommunicationServer::new(paths)
         .serve(rmcp::transport::stdio())
         .await?;
     service.waiting().await?;
@@ -789,7 +792,7 @@ mod tests {
     #[test]
     fn mcp_instructions_carry_the_guidance() {
         assert!(INSTRUCTIONS.starts_with(
-            "agentmail lets you coordinate with other coding agents on this machine by mail.\n"
+            "agent-communication lets you coordinate with other coding agents on this machine by mail.\n"
         ));
         assert!(INSTRUCTIONS.contains("Only use it when the human asks"));
         assert!(INSTRUCTIONS.ends_with(
@@ -850,18 +853,18 @@ mod tests {
     #[test]
     fn mcp_caller_prefers_address_env_then_session() {
         let paths = Paths::from_vars(|k| {
-            (k == "AGENTMAIL_DATA_DIR" || k == "AGENTMAIL_SOCKET")
+            (k == "AGENT_COMMUNICATION_DATA_DIR" || k == "AGENT_COMMUNICATION_SOCKET")
                 .then(|| std::ffi::OsString::from("/nonexistent"))
         })
         .unwrap();
         let procs = Caller::Procs { procs: vec![] };
-        let server = |address_env: bool, caller: Caller| AgentMailServer {
+        let server = |address_env: bool, caller: Caller| AgentCommunicationServer {
             paths: paths.clone(),
             address_env,
             caller: Arc::new(Mutex::new(caller)),
             bind: None,
             shared: None,
-            tool_router: AgentMailServer::tool_router(),
+            tool_router: AgentCommunicationServer::tool_router(),
         };
         let key = SessionKey {
             harness: Harness::Opencode,
@@ -881,17 +884,17 @@ mod tests {
     #[test]
     fn mcp_register_caches_the_address_unless_overridden() {
         let paths = Paths::from_vars(|k| {
-            (k == "AGENTMAIL_DATA_DIR" || k == "AGENTMAIL_SOCKET")
+            (k == "AGENT_COMMUNICATION_DATA_DIR" || k == "AGENT_COMMUNICATION_SOCKET")
                 .then(|| std::ffi::OsString::from("/nonexistent"))
         })
         .unwrap();
-        let server = |address_env: bool, caller: Caller| AgentMailServer {
+        let server = |address_env: bool, caller: Caller| AgentCommunicationServer {
             paths: paths.clone(),
             address_env,
             caller: Arc::new(Mutex::new(caller)),
             bind: None,
             shared: None,
-            tool_router: AgentMailServer::tool_router(),
+            tool_router: AgentCommunicationServer::tool_router(),
         };
         let registered = json!({"address": "new-87654321"});
         let new = Caller::Address {
@@ -910,7 +913,7 @@ mod tests {
         }));
         s.remember_registered(&in_session, &registered);
         assert_eq!(s.caller(&none), Caller::Procs { procs: vec![] });
-        // AGENTMAIL_ADDRESS keeps overriding after a register.
+        // AGENT_COMMUNICATION_ADDRESS keeps overriding after a register.
         let env = Caller::Address {
             address: "env-12345678".into(),
         };
@@ -918,7 +921,7 @@ mod tests {
         s.remember_registered(&none, &registered);
         assert_eq!(s.caller(&none), env);
         // A server shared between sessions caches nothing either.
-        let s = AgentMailServer {
+        let s = AgentCommunicationServer {
             shared: Some(Harness::Opencode),
             ..server(false, Caller::Procs { procs: vec![] })
         };
@@ -932,17 +935,17 @@ mod tests {
         // shares the server: a call without an opencode session (none, or
         // another harness's) cannot register, and nothing is cached.
         let paths = Paths::from_vars(|k| {
-            (k == "AGENTMAIL_DATA_DIR" || k == "AGENTMAIL_SOCKET")
+            (k == "AGENT_COMMUNICATION_DATA_DIR" || k == "AGENT_COMMUNICATION_SOCKET")
                 .then(|| std::ffi::OsString::from("/nonexistent"))
         })
         .unwrap();
-        let s = AgentMailServer {
+        let s = AgentCommunicationServer {
             paths,
             address_env: false,
             caller: Arc::new(Mutex::new(Caller::Procs { procs: vec![] })),
             bind: None,
             shared: Some(Harness::Opencode),
-            tool_router: AgentMailServer::tool_router(),
+            tool_router: AgentCommunicationServer::tool_router(),
         };
         let params = || {
             Parameters(RegisterParams {
@@ -1008,7 +1011,7 @@ mod tests {
 
     #[test]
     fn mcp_lists_every_tool() {
-        let mut names: Vec<String> = AgentMailServer::tool_router()
+        let mut names: Vec<String> = AgentCommunicationServer::tool_router()
             .list_all()
             .into_iter()
             .map(|t| t.name.to_string())

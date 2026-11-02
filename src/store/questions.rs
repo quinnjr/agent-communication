@@ -315,7 +315,7 @@ mod tests {
 
     fn store() -> (TempDir, Store) {
         let dir = TempDir::new().unwrap();
-        let store = Store::open(&dir.path().join("agentmail.redb")).unwrap();
+        let store = Store::open(&dir.path().join("agent-communication.redb")).unwrap();
         (dir, store)
     }
 
@@ -494,7 +494,7 @@ mod tests {
     #[test]
     fn open_index_is_rebuilt_on_open() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("agentmail.redb");
+        let path = dir.path().join("agent-communication.redb");
         let (q1, q2) = {
             let s = Store::open(&path).unwrap();
             let a = agent(&s, "backend");

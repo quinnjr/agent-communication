@@ -6,10 +6,10 @@ use std::path::Path;
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
-use agentmail::client::{Client, ClientError};
-use agentmail::model::{HUMAN, Harness, ProcId};
-use agentmail::procinfo;
-use agentmail::protocol::{Caller, ErrorCode, Request};
+use agent_communication::client::{Client, ClientError};
+use agent_communication::model::{HUMAN, Harness, ProcId};
+use agent_communication::procinfo;
+use agent_communication::protocol::{Caller, ErrorCode, Request};
 use common::{TestDaemon, agent, register, send_req};
 use serde_json::Value;
 

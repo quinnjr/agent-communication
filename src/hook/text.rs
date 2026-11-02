@@ -15,7 +15,7 @@ pub const MAX_SUBJECT: usize = 200;
 pub const MAX_LISTED_QUESTIONS: usize = 10;
 
 /// The unread count and open questions, e.g.
-/// `📬 agentmail — you are backend-k3x9q2mz: 2 unread (1 question from
+/// `📬 agent-communication — you are backend-k3x9q2mz: 2 unread (1 question from
 /// frontend-p7v2c8wd: "POST /orders body?"). Check your inbox before
 /// continuing.` `None` when there is no unread mail and no open question.
 pub fn reminder(status: &HookStatus) -> Option<String> {
@@ -33,7 +33,7 @@ pub fn reminder(status: &HookStatus) -> Option<String> {
         ),
     };
     Some(format!(
-        "📬 agentmail — you are {}: {} unread{questions}. Check your inbox before continuing.",
+        "📬 agent-communication — you are {}: {} unread{questions}. Check your inbox before continuing.",
         status.address, status.unread
     ))
 }
@@ -46,7 +46,7 @@ pub fn urgent(msgs: &[Message]) -> Option<String> {
         return None;
     }
     let mut out = String::from(
-        "🚨 agentmail — urgent mail. It stays unread in your inbox; act on it before continuing.",
+        "🚨 agent-communication — urgent mail. It stays unread in your inbox; act on it before continuing.",
     );
     for m in msgs {
         out.push_str(&format!(
@@ -104,7 +104,7 @@ pub fn open_questions(status: &HookStatus) -> Option<String> {
         return None;
     }
     let mut out = format!(
-        "agentmail — you are {} and these questions to you are still open:",
+        "agent-communication — you are {} and these questions to you are still open:",
         status.address
     );
     for q in status.open_questions.iter().take(MAX_LISTED_QUESTIONS) {
@@ -129,7 +129,7 @@ pub fn open_questions(status: &HookStatus) -> Option<String> {
 /// One line: who the agent is and how to work with the mail.
 pub fn guidance_reminder(status: &HookStatus) -> String {
     format!(
-        "agentmail: you are {}. Check your inbox between steps; answer questions addressed to you first.",
+        "agent-communication: you are {}. Check your inbox between steps; answer questions addressed to you first.",
         status.address
     )
 }
@@ -182,12 +182,12 @@ mod tests {
         assert_eq!(reminder(&status(0, &[])), None);
         assert_eq!(
             reminder(&status(2, &[("frontend-p7v2c8wd", "POST /orders body?")])).unwrap(),
-            "📬 agentmail — you are backend-k3x9q2mz: 2 unread (1 question from \
+            "📬 agent-communication — you are backend-k3x9q2mz: 2 unread (1 question from \
              frontend-p7v2c8wd: \"POST /orders body?\"). Check your inbox before continuing."
         );
         assert_eq!(
             reminder(&status(1, &[])).unwrap(),
-            "📬 agentmail — you are backend-k3x9q2mz: 1 unread. Check your inbox before continuing."
+            "📬 agent-communication — you are backend-k3x9q2mz: 1 unread. Check your inbox before continuing."
         );
         let many = reminder(&status(0, &[("a-1", "first"), ("b-2", "second")])).unwrap();
         assert!(

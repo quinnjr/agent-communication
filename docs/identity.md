@@ -24,7 +24,7 @@ The MCP server, shell commands and hooks of one agent are separate
 processes, so they find their address through the harness process they share
 (or, under opencode, the session):
 
-- `agentmail mcp` binds the registration to its parent, the harness process,
+- `agent-communication mcp` binds the registration to its parent, the harness process,
   storing its PID and start time (which guards against PID reuse). kiro-cli
   starts its MCP servers from a `node` helper, so when the parent is not a
   harness and a `kiro-cli` sits above it, the nearest `kiro-cli` is bound
@@ -48,7 +48,7 @@ processes, so they find their address through the harness process they share
 - opencode subagents (its task tool) run in child sessions with their own
   session id, which their MCP `_meta` and `OPENCODE_SESSION_ID` carry. So
   they are separate identities, not the parent's agent: until a subagent
-  calls `register` (or acts through `AGENTMAIL_ADDRESS`), its calls are
+  calls `register` (or acts through `AGENT_COMMUNICATION_ADDRESS`), its calls are
   refused with `NoIdentity`.
 - Session variables count only under the harness that sets them: the CLI
   uses `OPENCODE_SESSION_ID` only when its nearest harness ancestor is
@@ -56,7 +56,7 @@ processes, so they find their address through the harness process they share
   job detached from opencode, inherits the variable but does not act as that
   session.
 - CLI calls walk up their process ancestors and use the nearest one with a live
-  registration. `agentmail register` from a shell binds to the nearest
+  registration. `agent-communication register` from a shell binds to the nearest
   harness ancestor. `--pid` picks a process explicitly: a harness process, or
   a process that is not an ancestor of the command, is bound exactly, but a
   non-harness ancestor (the shell, `$$`) under a kiro or opencode process is
@@ -64,26 +64,26 @@ processes, so they find their address through the harness process they share
   helper below it, and opencode may start them through a wrapper).
 - Claude Code gets no such replacement, so an unknown MCP client run from a
   Claude Code shell binds itself rather than taking over Claude Code's agent.
-  The price: configure Claude Code to run `agentmail mcp` directly (or `exec`
+  The price: configure Claude Code to run `agent-communication mcp` directly (or `exec`
   it from a wrapper script). Started through a wrapper that stays its parent
-  (`sh -c 'agentmail mcp'`), the server binds the wrapper, and CLI calls and
+  (`sh -c 'agent-communication mcp'`), the server binds the wrapper, and CLI calls and
   hooks from Claude Code's shell, which look up Claude Code's process, do not
   find that agent.
 - The same holds under kiro and opencode for an MCP client run from their
   shell (codex, gemini-cli or an inspector started from kiro's shell tool or
   opencode's bash tool): such a server binds the client's own process, not
   kiro-cli or opencode, so it neither takes over the agent kiro's own server
-  registered nor counts as opencode's shared server. agentmail tells the two
+  registered nor counts as opencode's shared server. agent-communication tells the two
   apart by the session variable (`KIRO_SESSION_ID`, `OPENCODE_SESSION_ID`)
   that these harnesses set for shell commands but not for their own MCP
   servers.
-- `AGENTMAIL_ADDRESS=<address>` overrides the lookup, for unusual setups.
+- `AGENT_COMMUNICATION_ADDRESS=<address>` overrides the lookup, for unusual setups.
 
 The CLI resolves who it is acting as in this order:
 
 1. `--as human`
-2. `AGENTMAIL_ADDRESS`
-3. `AGENTMAIL_HUMAN=1`
+2. `AGENT_COMMUNICATION_ADDRESS`
+3. `AGENT_COMMUNICATION_HUMAN=1`
 4. the opencode session (`OPENCODE_SESSION_ID`, under an opencode process)
 5. process ancestry
 

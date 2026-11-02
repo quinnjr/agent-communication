@@ -1,9 +1,9 @@
 //! `install.sh`, the curl-pipe installer.
 //!
 //! Each test serves a fake release from a temporary directory through
-//! `AGENTMAIL_DOWNLOAD_URL=file://...` and runs the script with a private
+//! `AGENT_COMMUNICATION_DOWNLOAD_URL=file://...` and runs the script with a private
 //! PATH holding only the tools it needs (plus, for some tests, a fake
-//! `cargo`). The release's `agentmail` is a stub shell script that records
+//! `cargo`). The release's `agent-communication` is a stub shell script that records
 //! its arguments, so the tests check what the installer downloads, verifies
 //! and runs without building a release.
 
@@ -16,7 +16,7 @@ use tempfile::TempDir;
 const STUB: &str = r#"#!/bin/sh
 echo "$*" >> "$(dirname "$0")/calls"
 case "$1" in
-    --version) echo "agentmail 0.0.0-stub" ;;
+    --version) echo "agent-communication 0.0.0-stub" ;;
 esac
 exit 0
 "#;
@@ -30,7 +30,7 @@ while [ $# -gt 0 ]; do
     shift
 done
 mkdir -p "$root/bin"
-cp "$FAKE_CARGO_STUB" "$root/bin/agentmail"
+cp "$FAKE_CARGO_STUB" "$root/bin/agent-communication"
 "#;
 
 /// What install.sh runs, linked into the private PATH.
@@ -69,7 +69,7 @@ fn triple() -> &'static str {
 }
 
 fn archive() -> String {
-    format!("agentmail-{}.tar.gz", triple())
+    format!("agent-communication-{}.tar.gz", triple())
 }
 
 fn write_exec(path: &Path, text: &str) {
@@ -115,10 +115,10 @@ impl Release {
     fn publish(&self, binary: &str) {
         let pkg = self.path("pkg");
         std::fs::create_dir_all(&pkg).unwrap();
-        write_exec(&pkg.join("agentmail"), binary);
+        write_exec(&pkg.join("agent-communication"), binary);
         run(
             "tar",
-            &["czf", &archive(), "-C", "pkg", "agentmail"],
+            &["czf", &archive(), "-C", "pkg", "agent-communication"],
             self.dir.path(),
         );
         self.write_checksum();
@@ -220,10 +220,10 @@ cp "$path" "$out"
             .env("SHELL", self.path("path/sh"))
             .env("HOME", self.path("home"))
             .env(
-                "AGENTMAIL_DOWNLOAD_URL",
+                "AGENT_COMMUNICATION_DOWNLOAD_URL",
                 format!("file://{}", self.path("rel").display()),
             )
-            .env("AGENTMAIL_INSTALL_DIR", self.bin_dir())
+            .env("AGENT_COMMUNICATION_INSTALL_DIR", self.bin_dir())
             .env("FAKE_CARGO_LOG", self.path("cargo.log"))
             .env("FAKE_CARGO_STUB", self.path("cargo-stub"))
             .envs(env.iter().map(|(k, v)| (k, v)))
@@ -254,7 +254,7 @@ fn assert_fails_with(r: &Release, out: &Output, msg: &str) {
         "want {msg:?} in:\n{}",
         stderr(out)
     );
-    assert!(!r.bin_dir().join("agentmail.new").exists());
+    assert!(!r.bin_dir().join("agent-communication.new").exists());
 }
 
 #[test]
@@ -264,11 +264,14 @@ fn installs_the_latest_release_into_the_bin_dir() {
     assert!(out.status.success(), "{}", stderr(&out));
     let err = stderr(&out);
     assert!(err.contains("/latest/download/"), "{err}");
-    assert!(err.contains("installed agentmail 0.0.0-stub"), "{err}");
+    assert!(
+        err.contains("installed agent-communication 0.0.0-stub"),
+        "{err}"
+    );
     assert!(err.contains("is not on your PATH"), "{err}");
-    let bin = r.bin_dir().join("agentmail");
+    let bin = r.bin_dir().join("agent-communication");
     assert_eq!(bin.metadata().unwrap().permissions().mode() & 0o777, 0o755);
-    assert!(!r.bin_dir().join("agentmail.new").exists());
+    assert!(!r.bin_dir().join("agent-communication.new").exists());
 }
 
 #[test]
@@ -298,7 +301,7 @@ fn a_checksum_mismatch_installs_nothing() {
     std::fs::write(r.latest(&format!("{}.sha256", archive())), sum).unwrap();
     let out = r.install(&[]);
     assert_fails_with(&r, &out, "checksum mismatch");
-    assert!(!r.bin_dir().join("agentmail").exists());
+    assert!(!r.bin_dir().join("agent-communication").exists());
 }
 
 #[test]
@@ -307,7 +310,7 @@ fn a_missing_checksum_installs_nothing() {
     std::fs::remove_file(r.latest(&format!("{}.sha256", archive()))).unwrap();
     let out = r.install(&[]);
     assert_fails_with(&r, &out, "no checksum");
-    assert!(!r.bin_dir().join("agentmail").exists());
+    assert!(!r.bin_dir().join("agent-communication").exists());
 }
 
 #[test]
@@ -316,7 +319,7 @@ fn an_empty_checksum_installs_nothing() {
     std::fs::write(r.latest(&format!("{}.sha256", archive())), "").unwrap();
     let out = r.install(&[]);
     assert_fails_with(&r, &out, "not a SHA-256 hash");
-    assert!(!r.bin_dir().join("agentmail").exists());
+    assert!(!r.bin_dir().join("agent-communication").exists());
 }
 
 #[test]
@@ -329,11 +332,11 @@ fn a_truncated_archive_keeps_the_old_binary() {
     std::fs::write(r.path(&archive()), &full[..full.len() / 2]).unwrap();
     r.write_checksum();
     std::fs::create_dir_all(r.bin_dir()).unwrap();
-    std::fs::write(r.bin_dir().join("agentmail"), "old").unwrap();
+    std::fs::write(r.bin_dir().join("agent-communication"), "old").unwrap();
     let out = r.install(&[]);
     assert_fails_with(&r, &out, "could not unpack");
     assert_eq!(
-        std::fs::read_to_string(r.bin_dir().join("agentmail")).unwrap(),
+        std::fs::read_to_string(r.bin_dir().join("agent-communication")).unwrap(),
         "old"
     );
 }
@@ -343,11 +346,11 @@ fn a_binary_that_does_not_run_keeps_the_old_one() {
     let r = Release::new();
     r.publish("#!/bin/sh\nexit 1\n");
     std::fs::create_dir_all(r.bin_dir()).unwrap();
-    std::fs::write(r.bin_dir().join("agentmail"), "old").unwrap();
+    std::fs::write(r.bin_dir().join("agent-communication"), "old").unwrap();
     let out = r.install(&[]);
     assert_fails_with(&r, &out, "does not run on this machine");
     assert_eq!(
-        std::fs::read_to_string(r.bin_dir().join("agentmail")).unwrap(),
+        std::fs::read_to_string(r.bin_dir().join("agent-communication")).unwrap(),
         "old"
     );
 }
@@ -358,14 +361,18 @@ fn no_release_yet_says_so_and_does_not_build() {
     r.latest_redirects_to(NO_RELEASE);
     let cargo_log = r.add_cargo();
     let out = r.install(&[]);
-    assert_fails_with(&r, &out, "no agentmail release has been published yet");
+    assert_fails_with(
+        &r,
+        &out,
+        "no agent-communication release has been published yet",
+    );
     assert!(!cargo_log.exists(), "cargo ran without --from-source");
 }
 
 /// Where GitHub's releases/latest redirects with no release published.
-const NO_RELEASE: &str = "https://github.com/quinnjr/agentmail/releases";
+const NO_RELEASE: &str = "https://github.com/quinnjr/agent-communication/releases";
 /// Where it redirects when v0.1.0 is the latest release.
-const LATEST_V010: &str = "https://github.com/quinnjr/agentmail/releases/tag/v0.1.0";
+const LATEST_V010: &str = "https://github.com/quinnjr/agent-communication/releases/tag/v0.1.0";
 
 #[test]
 fn the_latest_tag_is_resolved_once_and_downloaded() {
@@ -406,7 +413,7 @@ fn an_unknown_latest_release_missing_from_a_mirror_is_an_error() {
     let r = Release::new();
     std::fs::remove_dir_all(r.path("rel/latest")).unwrap();
     let out = r.install(&[]);
-    assert_fails_with(&r, &out, "found no agentmail release at");
+    assert_fails_with(&r, &out, "found no agent-communication release at");
 }
 
 #[test]
@@ -416,7 +423,7 @@ fn wget_resolves_the_latest_tag() {
     let out = r.install(&[]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(
-        stderr(&out).contains("/download/v0.1.0/agentmail-"),
+        stderr(&out).contains("/download/v0.1.0/agent-communication-"),
         "{}",
         stderr(&out)
     );
@@ -427,7 +434,11 @@ fn wget_sees_that_no_release_exists() {
     let r = Release::new();
     r.use_wget(NO_RELEASE);
     let out = r.install(&[]);
-    assert_fails_with(&r, &out, "no agentmail release has been published yet");
+    assert_fails_with(
+        &r,
+        &out,
+        "no agent-communication release has been published yet",
+    );
 }
 
 #[test]
@@ -446,11 +457,11 @@ fn from_source_builds_the_requested_tag() {
     let log = std::fs::read_to_string(cargo_log).unwrap();
     assert!(
         log.starts_with(
-            "install --locked --git https://github.com/quinnjr/agentmail --tag v0.1.0 --root "
+            "install --locked --git https://github.com/quinnjr/agent-communication --tag v0.1.0 --root "
         ),
         "{log}"
     );
-    assert!(stderr(&out).contains("installed agentmail 0.0.0-stub"));
+    assert!(stderr(&out).contains("installed agent-communication 0.0.0-stub"));
     assert!(!stderr(&out).contains("downloading"), "{}", stderr(&out));
 }
 
@@ -480,7 +491,7 @@ fn from_source_without_cargo_says_how_to_get_rust() {
 }
 
 #[test]
-fn harness_and_service_run_agentmail_install() {
+fn harness_and_service_run_agent_communication_install() {
     let r = Release::new();
     let out = r.install(&["--harness", "opencode", "--harness=kiro", "--service"]);
     assert!(out.status.success(), "{}", stderr(&out));
@@ -514,13 +525,13 @@ fn harness_auto_with_no_harness_installs_none() {
 }
 
 #[test]
-fn warns_about_another_agentmail_earlier_on_path() {
+fn warns_about_another_agent_communication_earlier_on_path() {
     let r = Release::new();
-    write_exec(&r.path("path/agentmail"), STUB);
+    write_exec(&r.path("path/agent-communication"), STUB);
     let out = r.install(&[]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(
-        stderr(&out).contains("finds another agentmail first"),
+        stderr(&out).contains("finds another agent-communication first"),
         "{}",
         stderr(&out)
     );
@@ -531,9 +542,9 @@ fn a_relative_bin_dir_is_made_absolute() {
     let r = Release::new();
     let out = r.install(&["--bin-dir", "rel-bin"]);
     assert!(out.status.success(), "{}", stderr(&out));
-    assert!(r.path("rel-bin/agentmail").exists());
+    assert!(r.path("rel-bin/agent-communication").exists());
     let want = format!(
-        "installed agentmail 0.0.0-stub to {}/rel-bin/agentmail",
+        "installed agent-communication 0.0.0-stub to {}/rel-bin/agent-communication",
         r.dir.path().display()
     );
     assert!(stderr(&out).contains(&want), "{}", stderr(&out));
@@ -547,9 +558,9 @@ fn a_trailing_slash_bin_dir_on_path_is_recognised() {
     let out = r.install_env(&["--bin-dir", &bin], &[("PATH", path)]);
     assert!(out.status.success(), "{}", stderr(&out));
     let err = stderr(&out);
-    assert!(!err.contains("another agentmail"), "{err}");
+    assert!(!err.contains("another agent-communication"), "{err}");
     assert!(!err.contains("not on your PATH"), "{err}");
-    assert!(!err.contains("//agentmail"), "{err}");
+    assert!(!err.contains("//agent-communication"), "{err}");
 }
 
 #[test]
@@ -588,7 +599,7 @@ fn a_tilde_bin_dir_is_under_home() {
     let r = Release::new();
     let out = r.install(&["--bin-dir=~/tools"]);
     assert!(out.status.success(), "{}", stderr(&out));
-    assert!(r.path("home/tools/agentmail").exists());
+    assert!(r.path("home/tools/agent-communication").exists());
 }
 
 #[test]
@@ -605,7 +616,7 @@ fn bad_options_are_refused_before_downloading() {
         let out = r.install(args);
         assert_fails_with(&r, &out, msg);
         assert!(
-            !stderr(&out).contains("agentmail: downloading"),
+            !stderr(&out).contains("agent-communication: downloading"),
             "{args:?}: {}",
             stderr(&out)
         );

@@ -354,9 +354,9 @@ mod tests {
             let mut child = Command::new("/bin/sh")
                 .arg("-c")
                 .arg("echo ready; sleep 5")
-                .env("AGENTMAIL_TEST_ENV", "v=1")
-                .env("AGENTMAIL_TEST_ENV_EMPTY", "")
-                .env_remove("AGENTMAIL_TEST_ENV_UNSET")
+                .env("AGENT_COMMUNICATION_TEST_ENV", "v=1")
+                .env("AGENT_COMMUNICATION_TEST_ENV_EMPTY", "")
+                .env_remove("AGENT_COMMUNICATION_TEST_ENV_UNSET")
                 .stdout(std::process::Stdio::piped())
                 .spawn()
                 .unwrap();
@@ -365,10 +365,10 @@ mod tests {
                 .read_line(&mut line)
                 .unwrap();
             let pid = child.id();
-            let set = env_var(pid, "AGENTMAIL_TEST_ENV");
-            let empty = env_var(pid, "AGENTMAIL_TEST_ENV_EMPTY");
-            let prefix = env_var(pid, "AGENTMAIL_TEST");
-            let unset = env_var(pid, "AGENTMAIL_TEST_ENV_UNSET");
+            let set = env_var(pid, "AGENT_COMMUNICATION_TEST_ENV");
+            let empty = env_var(pid, "AGENT_COMMUNICATION_TEST_ENV_EMPTY");
+            let prefix = env_var(pid, "AGENT_COMMUNICATION_TEST");
+            let unset = env_var(pid, "AGENT_COMMUNICATION_TEST_ENV_UNSET");
             let _ = child.kill();
             let _ = child.wait();
             assert_eq!(set, Some("v=1".into()));

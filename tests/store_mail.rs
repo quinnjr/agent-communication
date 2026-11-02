@@ -2,22 +2,22 @@
 
 use std::path::{Path, PathBuf};
 
-use agentmail::model::{HUMAN, Harness, Kind, Message, ProcId};
-use agentmail::store::{
+use agent_communication::model::{HUMAN, Harness, Kind, Message, ProcId};
+use agent_communication::store::{
     Alive, HookSnapshot, MAX_BODY, NewMessage, Store, StoreError, ThreadFilter,
 };
 use tempfile::TempDir;
 
 fn store() -> (TempDir, Store) {
     let dir = TempDir::new().unwrap();
-    let store = Store::open(&dir.path().join("agentmail.redb")).unwrap();
+    let store = Store::open(&dir.path().join("agent-communication.redb")).unwrap();
     (dir, store)
 }
 
 /// Register an agent (unbound, so never reclaimed by another test call) and
 /// return its address.
 fn agent(store: &Store, name: &str, repo: Option<&str>) -> String {
-    let req = agentmail::store::RegisterReq {
+    let req = agent_communication::store::RegisterReq {
         name: name.into(),
         role: None,
         working_on: None,
@@ -38,7 +38,7 @@ const NOT_ALIVE: Alive<'static> = &|_| false;
 /// Register an agent bound to live process `pid` (under `|_| true`) and
 /// return its address.
 fn live_agent(store: &Store, name: &str, repo: &str, pid: u32) -> String {
-    let req = agentmail::store::RegisterReq {
+    let req = agent_communication::store::RegisterReq {
         name: name.into(),
         role: None,
         working_on: None,
@@ -261,7 +261,7 @@ fn body_round_trip_exact() {
     let m = s.insert_message(note(&a, &[&b], "Body", body), 1).unwrap();
     assert_eq!(m.body, body);
     drop(s);
-    let s = Store::open(&dir.path().join("agentmail.redb")).unwrap();
+    let s = Store::open(&dir.path().join("agent-communication.redb")).unwrap();
     assert_eq!(s.get_message(&m.id).unwrap().unwrap().body, body);
     assert_eq!(s.inbox(&b, false).unwrap()[0].body, body);
 }
@@ -955,7 +955,7 @@ fn threads_repo_filter_is_normalized() {
 #[test]
 fn threads_repo_filter_matches_cwd_without_repo() {
     let (_d, s) = store();
-    let req = agentmail::store::RegisterReq {
+    let req = agent_communication::store::RegisterReq {
         name: "scratch".into(),
         role: None,
         working_on: None,
@@ -977,7 +977,7 @@ fn threads_repo_filter_matches_cwd_without_repo() {
 #[test]
 fn release_held_to_agent_with_relative_cwd_is_a_repo_mismatch() {
     let (_d, s) = store();
-    let req = agentmail::store::RegisterReq {
+    let req = agent_communication::store::RegisterReq {
         name: "frontend".into(),
         role: None,
         working_on: None,
@@ -1101,8 +1101,12 @@ fn thread_filter_accepts_partial_json() {
     );
 }
 
-fn register_req(name: &str, cwd: &str, repo: Option<&str>) -> agentmail::store::RegisterReq {
-    agentmail::store::RegisterReq {
+fn register_req(
+    name: &str,
+    cwd: &str,
+    repo: Option<&str>,
+) -> agent_communication::store::RegisterReq {
+    agent_communication::store::RegisterReq {
         name: name.into(),
         role: None,
         working_on: None,

@@ -1,7 +1,7 @@
-// agentmail for opencode (V2 plugin API: `export default { id, setup }`).
+// agent-communication for opencode (V2 plugin API: `export default { id, setup }`).
 //
-// Installed by `agentmail install --harness opencode`, which writes this
-// file with the agentmail binary's absolute path in place of the
+// Installed by `agent-communication install --harness opencode`, which writes this
+// file with the agent-communication binary's absolute path in place of the
 // placeholder below. It keeps an opencode agent in touch with its mail:
 //
 // - After each tool call: urgent mail is pushed into the running turn once
@@ -11,23 +11,23 @@
 //   appended to the tool's result.
 // - When a turn ends with questions to the agent still open, they are
 //   queued as the next turn (once; not again after that turn).
-// - While a session sits idle, a waiter runs `agentmail hook wait` and,
+// - While a session sits idle, a waiter runs `agent-communication hook wait` and,
 //   when mail comes, queues a reminder that starts a turn (`resume`); a
 //   reminder that cannot be queued is tried again, and the waiter waits on.
-// - When opencode deletes a session, its agent signs off (`agentmail hook
+// - When opencode deletes a session, its agent signs off (`agent-communication hook
 //   signoff`: only the session's own agent, and never starting the daemon).
 //
-// The agent of a session is the one registered for it (by agentmail's MCP
+// The agent of a session is the one registered for it (by agent-communication's MCP
 // server, from the `_meta` session id). Sessions without one, and a
-// stopped daemon, get nothing. Every agentmail call is a short-lived
-// `agentmail hook ...` process; any failure counts as "nothing to say".
+// stopped daemon, get nothing. Every agent-communication call is a short-lived
+// `agent-communication hook ...` process; any failure counts as "nothing to say".
 // No dependencies: `Bun.spawn` only.
 //
 // See docs/harness-notes.md, "opencode plugin".
 
-const BIN = "__AGENTMAIL_BIN__";
+const BIN = "__AGENT_COMMUNICATION_BIN__";
 // Split so that install's substitution leaves this one alone.
-const PLACEHOLDER = "__AGENTMAIL" + "_BIN__";
+const PLACEHOLDER = "__AGENT_COMMUNICATION" + "_BIN__";
 
 /** How long one `hook wait` runs before reporting no mail, in seconds. */
 const WAIT_SECS = 300;
@@ -48,28 +48,28 @@ const SESSIONS_MAX = 256;
 /** The first wait after a failed delivery, in seconds; doubled per failure. */
 const RETRY_SECS = 5;
 
-/** The agentmail binary: the installed path, else `agentmail` on PATH. */
+/** The agent-communication binary: the installed path, else `agent-communication` on PATH. */
 function bin() {
-  return BIN === PLACEHOLDER ? "agentmail" : BIN;
+  return BIN === PLACEHOLDER ? "agent-communication" : BIN;
 }
 
 /**
- * The environment for agentmail commands: opencode's, without the
+ * The environment for agent-communication commands: opencode's, without the
  * variables that say who is calling. opencode's process may have inherited
  * them from the shell it was started in, and they name no session of this
- * opencode: with `AGENTMAIL_ADDRESS` the CLI would act as that address
- * instead of the session, and with `AGENTMAIL_HUMAN=1` (the human's own
+ * opencode: with `AGENT_COMMUNICATION_ADDRESS` the CLI would act as that address
+ * instead of the session, and with `AGENT_COMMUNICATION_HUMAN=1` (the human's own
  * shell) every hook would act as the human and say nothing, which would
  * silently turn the plugin off for every session.
  */
 function childEnv(extra = {}) {
   const env = { ...process.env, ...extra };
-  delete env.AGENTMAIL_ADDRESS;
-  delete env.AGENTMAIL_HUMAN;
+  delete env.AGENT_COMMUNICATION_ADDRESS;
+  delete env.AGENT_COMMUNICATION_HUMAN;
   return env;
 }
 
-/** Parse one JSON object printed by agentmail; null if there is none. */
+/** Parse one JSON object printed by agent-communication; null if there is none. */
 function parse(text) {
   try {
     const v = JSON.parse(String(text).trim());
@@ -80,8 +80,8 @@ function parse(text) {
 }
 
 /**
- * Run `agentmail <args>` to its end: its exit code and stdout. Its stdin
- * is empty, never opencode's: every `agentmail hook` reads its stdin to the
+ * Run `agent-communication <args>` to its end: its exit code and stdout. Its stdin
+ * is empty, never opencode's: every `agent-communication hook` reads its stdin to the
  * end, and under `opencode run --standalone` the server's stdin carries
  * the CLI's requests (`serve --stdio`), which an inherited stdin would take
  * and so hang the session. Bun's `$` inherits it, hence `Bun.spawn`.
@@ -93,7 +93,7 @@ async function run(args) {
 }
 
 /**
- * `agentmail hook status` for `sessionID`: the agent's status with the
+ * `agent-communication hook status` for `sessionID`: the agent's status with the
  * words to show under `text`, or null when the session has no agent, the
  * daemon is down, or anything fails.
  */
@@ -110,21 +110,21 @@ async function status(sessionID, surfaceUrgent) {
 }
 
 /**
- * One `agentmail hook wait` for `sessionID`, of at most `secs` seconds,
+ * One `agent-communication hook wait` for `sessionID`, of at most `secs` seconds,
  * killed when `signal` aborts. `from` says which unread mail does not
  * count as news: `continued`, all there is now (only mail that arrives
- * from now on counts); `afterWake`, the mail agentmail last woke the
+ * from now on counts); `afterWake`, the mail agent-communication last woke the
  * session for (the turn that just ended was started by a wake);
  * `known`, exactly these ids (the unread mail when the plugin queued open
  * questions as a turn, the unread mail when a turn was interrupted or
  * failed, or the `known` ids of the timed-out
  * wait before this one, so mail that came between counts); none of them,
- * mail already woken for (a plain end of turn). The result is agentmail's
+ * mail already woken for (a plain end of turn). The result is agent-communication's
  * answer (`{mail}`, `{busy}`, `{skip}`, `{gone}`), or null when it failed
- * or was killed. agentmail catches the kill: one that comes before it
+ * or was killed. agent-communication catches the kill: one that comes before it
  * recorded a wake ends it with nothing recorded, one that comes after
  * lets it print the wake first. A mail answer is returned however the
- * process ended, since agentmail has recorded it as a wake and the caller
+ * process ended, since agent-communication has recorded it as a wake and the caller
  * must not lose it.
  */
 async function waitOnce(sessionID, from, signal, secs = WAIT_SECS) {
@@ -166,7 +166,7 @@ async function waitOnce(sessionID, from, signal, secs = WAIT_SECS) {
 }
 
 /**
- * `agentmail hook signoff` for `sessionID`: signs off the agent registered
+ * `agent-communication hook signoff` for `sessionID`: signs off the agent registered
  * for that session, and no other. Never starts the daemon. Best effort.
  */
 async function signoff(sessionID) {
@@ -212,7 +212,7 @@ async function setup(ctx) {
   /** Sessions known to be this instance's. */
   const mine = new Set();
   /**
-   * Urgent text agentmail marked surfaced that could not be delivered
+   * Urgent text agent-communication marked surfaced that could not be delivered
    * (steering failed after a tool call with no result to append to), by
    * session: delivered after the next tool call, or at the turn's end.
    */
@@ -331,7 +331,7 @@ async function setup(ctx) {
   // Wait for mail while the session is idle; when it comes, queue the
   // reminder as a new turn. One waiter per session; `from` is the first
   // wait's (`waitOnce`). It ends when the session gets busy (stopWaiter),
-  // and when agentmail says the agent is gone or wants no waking; the
+  // and when agent-communication says the agent is gone or wants no waking; the
   // session's next idle period starts a new one. A timeout
   // (`{"mail":false}`) waits again. A wake that cannot be queued keeps
   // waiting (for new mail only), and is tried again after each shorter
@@ -370,7 +370,7 @@ async function setup(ctx) {
         const r = await waitOnce(sessionID, { continued, afterWake, known }, signal, secs);
         if (!r) break;
         if (r.mail === true) {
-          // agentmail recorded this mail as woken: it is this plugin's to
+          // agent-communication recorded this mail as woken: it is this plugin's to
           // deliver now, or when the session is next idle.
           if (stopped.signal.aborted || sessions.get(sessionID) !== s) break;
           s.missed = true;
@@ -493,7 +493,7 @@ async function setup(ctx) {
     if (st.wake !== true) return;
     // Which unread mail the wait counts as already there. After a turn of
     // the open questions: the mail unread when they were queued. After a
-    // wake (or urgent mail) this plugin queued: the mail agentmail last
+    // wake (or urgent mail) this plugin queued: the mail agent-communication last
     // woke the session for, so mail that came during the turn (after its
     // last tool call) still wakes it. When
     // the questions could not be queued: the mail unread now (they would
@@ -559,7 +559,7 @@ async function setup(ctx) {
   // After each tool call: urgent mail into the running turn, else a
   // reminder on the tool's result. Urgent mail that cannot be steered (the
   // turn ended meanwhile, or `synthetic` failed) is appended to the result
-  // instead: agentmail has marked it surfaced, so it is not pushed again.
+  // instead: agent-communication has marked it surfaced, so it is not pushed again.
   // A failed tool call has no result to append to: its urgent text is
   // kept, for the next tool call or the turn's end.
   disposers.push(
@@ -611,4 +611,4 @@ async function setup(ctx) {
   };
 }
 
-export default { id: "agentmail", setup };
+export default { id: "agent-communication", setup };

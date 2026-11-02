@@ -5,28 +5,28 @@
 //! directory, with the plugin in `.opencode/plugins/`. opencode loads and
 //! merges both `opencode.json` and `opencode.jsonc` there (the `.jsonc`
 //! last), and at project scope also `.opencode/opencode.json(c)` after
-//! them, so install updates agentmail's entry in each that has one, else
+//! them, so install updates agent-communication's entry in each that has one, else
 //! adds it to the first of the direct two that exists (a new
 //! `opencode.json` when neither does), and uninstall removes it from
-//! all. The MCP server goes in `mcp.servers.agentmail`, also in a file
+//! all. The MCP server goes in `mcp.servers.agent-communication`, also in a file
 //! that keeps its other servers in the V1 shape (`mcp.<name>`): opencode
 //! 2.0.27 reads both, but drops `codemode` from a V1 entry, and its own
 //! `opencode mcp add` writes `servers` into such a file too (see
-//! `docs/harness-notes.md`). A V1 entry named `agentmail` is agentmail's:
+//! `docs/harness-notes.md`). A V1 entry named `agent-communication` is agent-communication's:
 //! install moves it to `servers`, uninstall removes it. A config with
 //! JSONC syntax (comments, trailing commas) is never rewritten (it would
 //! be lost): install and uninstall refuse with the entry to add or remove
 //! by hand, unless the file is already as they would leave it. The plugin
-//! is `plugin/agentmail.js`, embedded, with the binary's path in place of
-//! its placeholder; a `plugins/agentmail.js` that is not agentmail's, or
+//! is `plugin/agent-communication.js`, embedded, with the binary's path in place of
+//! its placeholder; a `plugins/agent-communication.js` that is not agent-communication's, or
 //! is a symlink, is never replaced, and of a symlink uninstall removes
-//! only the link, even when agentmail created the file it replaced. A
+//! only the link, even when agent-communication created the file it replaced. A
 //! plugin the user edited (one without the digest line that ends every
-//! plugin agentmail writes) is saved as its backup (or beside it) before it
-//! is replaced or removed, whether or not agentmail created it.
+//! plugin agent-communication writes) is saved as its backup (or beside it) before it
+//! is replaced or removed, whether or not agent-communication created it.
 //!
 //! opencode loads the user scope's `plugin/` and `plugins/`, then the
-//! project's, but runs only the first plugin of each `id`: an agentmail
+//! project's, but runs only the first plugin of each `id`: an agent-communication
 //! plugin left in `plugin/` would shadow the installed one, which would
 //! never run, so install and uninstall alike remove it, except that
 //! install refuses a symlink there (the user's setup), as in `plugins/`,
@@ -45,19 +45,19 @@ use super::{
 };
 
 /// The plugin as shipped.
-const PLUGIN: &str = include_str!("../../plugin/agentmail.js");
+const PLUGIN: &str = include_str!("../../plugin/agent-communication.js");
 /// The plugin's binary path, a JS string literal, as shipped.
-const PLACEHOLDER: &str = "\"__AGENTMAIL_BIN__\"";
-/// The plugin's first line, which marks a file as agentmail's plugin.
-const PLUGIN_HEAD: &str = "// agentmail for opencode";
+const PLACEHOLDER: &str = "\"__AGENT_COMMUNICATION_BIN__\"";
+/// The plugin's first line, which marks a file as agent-communication's plugin.
+const PLUGIN_HEAD: &str = "// agent-communication for opencode";
 /// The start of the plugin's last line as installed, which signs the text
 /// above it (see [`sign`]).
-const DIGEST_PREFIX: &str = "// agentmail-digest: fnv1a64:";
+const DIGEST_PREFIX: &str = "// agent-communication-digest: fnv1a64:";
 
-/// The keys of the MCP server entry that agentmail sets; others (such as
+/// The keys of the MCP server entry that agent-communication sets; others (such as
 /// `environment` or `disabled`) are kept.
 const SERVER_KEYS: [&str; 3] = ["type", "command", "codemode"];
-/// The keys a V1 entry shares with a V2 one, carried over when agentmail's
+/// The keys a V1 entry shares with a V2 one, carried over when agent-communication's
 /// V1 entry is moved to `servers`.
 const SHARED_KEYS: [&str; 4] = ["environment", "cwd", "timeout", "protocol"];
 
@@ -66,7 +66,7 @@ const SHARED_KEYS: [&str; 4] = ["environment", "cwd", "timeout", "protocol"];
 /// in that order, else a new `opencode.json` alone. At project scope the
 /// overriding ones are those of `.opencode/opencode.json` and
 /// `.opencode/opencode.jsonc` that exist: opencode merges them after the
-/// direct ones, so an agentmail entry there wins.
+/// direct ones, so an agent-communication entry there wins.
 fn files(o: &InstallOpts, env: &Env) -> (Vec<PathBuf>, Vec<PathBuf>, PathBuf) {
     let existing = |dir: &Path| -> Vec<PathBuf> {
         ["opencode.json", "opencode.jsonc"]
@@ -87,7 +87,7 @@ fn files(o: &InstallOpts, env: &Env) -> (Vec<PathBuf>, Vec<PathBuf>, PathBuf) {
     (
         configs,
         overrides,
-        plugin_dir(o.project, env).join("agentmail.js"),
+        plugin_dir(o.project, env).join("agent-communication.js"),
     )
 }
 
@@ -108,16 +108,16 @@ fn plugin_dir(project: bool, env: &Env) -> PathBuf {
     }
 }
 
-/// The agentmail plugin opencode would run from a scope: the first that is
-/// agentmail's of `plugin/agentmail.js` and `plugins/agentmail.js`, the
+/// The agent-communication plugin opencode would run from a scope: the first that is
+/// agent-communication's of `plugin/agent-communication.js` and `plugins/agent-communication.js`, the
 /// order opencode loads them in, with the binary it runs (`None`: not
 /// readable from the file). A path that cannot be read (a directory, a
-/// file that is not UTF-8) is no agentmail plugin: this only feeds the
+/// file that is not UTF-8) is no agent-communication plugin: this only feeds the
 /// advisory [`notes`], which never stop a command.
 fn scope_plugin(project: bool, env: &Env) -> Option<(PathBuf, Option<String>)> {
     let plugins = plugin_dir(project, env);
     for dir in [plugins.with_file_name("plugin"), plugins] {
-        let path = dir.join("agentmail.js");
+        let path = dir.join("agent-communication.js");
         if let Ok(Some(text)) = read_opt(&path)
             && is_plugin(&text)
         {
@@ -127,7 +127,7 @@ fn scope_plugin(project: bool, env: &Env) -> Option<(PathBuf, Option<String>)> {
     None
 }
 
-/// The binary an agentmail plugin's text runs: the string literal where
+/// The binary an agent-communication plugin's text runs: the string literal where
 /// the shipped plugin has its placeholder.
 fn plugin_bin(text: &str) -> Option<String> {
     let line = PLUGIN.lines().find(|l| l.contains(PLACEHOLDER))?;
@@ -139,7 +139,7 @@ fn plugin_bin(text: &str) -> Option<String> {
         .ok()
 }
 
-/// What to tell the user about the other scope's agentmail plugin: opencode
+/// What to tell the user about the other scope's agent-communication plugin: opencode
 /// runs only one, the user scope's when both are there. Install notes
 /// when the one that runs (in the current project) is for another binary
 /// than `o.bin`; uninstall at user scope, when it hands over to the
@@ -151,23 +151,23 @@ pub(super) fn notes(o: &InstallOpts, env: &Env, install: bool) -> Result<Vec<Str
     };
     let runs = match &other_bin {
         Some(b) => format!("runs {b}"),
-        None => "runs a binary agentmail cannot read from it".to_string(),
+        None => "runs a binary agent-communication cannot read from it".to_string(),
     };
     let other = other.display();
     let note = match (install, o.project) {
         _ if install && other_bin.as_deref() == Some(bin) => None,
         (true, true) => Some(format!(
-            "note: opencode runs only one agentmail plugin, the user scope's when both are there: \
+            "note: opencode runs only one agent-communication plugin, the user scope's when both are there: \
              in this project the user-scope {other} ({runs}) runs, not the one installed here \
              for {bin}."
         )),
         (true, false) => Some(format!(
-            "note: opencode runs only one agentmail plugin, the user scope's when both are there: \
+            "note: opencode runs only one agent-communication plugin, the user scope's when both are there: \
              in this project the one installed now for {bin} runs, not the project's {other} \
              ({runs})."
         )),
         (false, false) if scope_plugin(false, env).is_some() => Some(format!(
-            "note: in this project opencode now runs the project's agentmail plugin {other} \
+            "note: in this project opencode now runs the project's agent-communication plugin {other} \
              ({runs})."
         )),
         (false, _) => None,
@@ -192,8 +192,8 @@ fn plugin_text(bin: &str) -> Result<String> {
 }
 
 /// `body` with a last line holding its digest: whatever text a version of
-/// agentmail installs, the file says itself that agentmail wrote it as it
-/// is, so a plugin an older agentmail installed is told from one the user
+/// agent-communication installs, the file says itself that agent-communication wrote it as it
+/// is, so a plugin an older agent-communication installed is told from one the user
 /// edited ([`pristine`]) without a list of every plugin ever shipped. The
 /// digest (FNV-1a, 64 bits, of the text above the line) only tells edits
 /// apart; it must never change, or every plugin installed before would
@@ -217,36 +217,38 @@ fn is_plugin(text: &str) -> bool {
     text.starts_with(PLUGIN_HEAD)
 }
 
-/// Remove agentmail's server entries (V2 and V1), for [`JsonFile::change`].
+/// Remove agent-communication's server entries (V2 and V1), for [`JsonFile::change`].
 fn strip(v: &mut Map<String, Value>) {
     if let Some(Value::Object(mcp)) = v.get_mut("mcp") {
-        mcp.shift_remove("agentmail");
+        mcp.shift_remove("agent-communication");
         if let Some(Value::Object(servers)) = mcp.get_mut("servers") {
-            servers.shift_remove("agentmail");
+            servers.shift_remove("agent-communication");
         }
     }
 }
 
-/// Make `v`'s agentmail entry the one for `bin` (install), or remove it.
+/// Make `v`'s agent-communication entry the one for `bin` (install), or remove it.
 fn edit(v: &mut Map<String, Value>, install: bool, bin: &str, path: &Path) -> Result<()> {
     if !install {
         strip(v);
         return Ok(());
     }
     let mcp = object_at(v, "mcp", path)?;
-    let legacy = mcp.shift_remove("agentmail");
+    let legacy = mcp.shift_remove("agent-communication");
     let servers = object_at(mcp, "servers", path)?;
     let want = server(bin);
     let want = want.as_object().expect("an object");
-    let entry = match servers.get_mut("agentmail") {
+    let entry = match servers.get_mut("agent-communication") {
         // Keep what the user added to the entry, such as `environment`.
         Some(Value::Object(cur)) => {
             merge_keys(cur, want, &SERVER_KEYS);
             cur
         }
         _ => {
-            servers.insert("agentmail".into(), Value::Object(want.clone()));
-            servers["agentmail"].as_object_mut().expect("an object")
+            servers.insert("agent-communication".into(), Value::Object(want.clone()));
+            servers["agent-communication"]
+                .as_object_mut()
+                .expect("an object")
         }
     };
     if let Some(Value::Object(old)) = legacy {
@@ -255,7 +257,7 @@ fn edit(v: &mut Map<String, Value>, install: bool, bin: &str, path: &Path) -> Re
     Ok(())
 }
 
-/// Carry over to `entry` what agentmail's V1 entry `old` set and `entry`
+/// Carry over to `entry` what agent-communication's V1 entry `old` set and `entry`
 /// lacks: the keys both shapes share, and `enabled: false` as `disabled:
 /// true`.
 fn carry(entry: &mut Map<String, Value>, old: &Map<String, Value>) {
@@ -271,7 +273,7 @@ fn carry(entry: &mut Map<String, Value>, old: &Map<String, Value>) {
     }
 }
 
-/// Whether `v` has an agentmail entry (V2 or V1).
+/// Whether `v` has an agent-communication entry (V2 or V1).
 fn has_entry(v: &Map<String, Value>) -> bool {
     let mut s = v.clone();
     strip(&mut s);
@@ -290,12 +292,12 @@ fn load(path: &Path, install: bool, bin: &str) -> Result<Option<(Map<String, Val
     match super::json::parse(bare.as_deref().unwrap_or(&text)) {
         Ok(Value::Object(m)) => Ok(Some((m, bare.is_some()))),
         Ok(_) => bail!(
-            "{} is not a JSON object; agentmail left it unchanged. {}",
+            "{} is not a JSON object; agent-communication left it unchanged. {}",
             path.display(),
             hand.advice(false)
         ),
         Err(e) => bail!(
-            "cannot parse {}: {e}; agentmail left it unchanged. {}",
+            "cannot parse {}: {e}; agent-communication left it unchanged. {}",
             path.display(),
             hand.advice(true)
         ),
@@ -303,19 +305,19 @@ fn load(path: &Path, install: bool, bin: &str) -> Result<Option<(Map<String, Val
 }
 
 /// What to do by hand with a config that cannot be read: add `entry` on
-/// install, remove agentmail's entries on uninstall.
+/// install, remove agent-communication's entries on uninstall.
 fn by_hand<'a>(install: bool, entry: &'a dyn Fn() -> String) -> ByHand<'a> {
     if install {
         ByHand::Add(entry)
     } else {
-        ByHand::Remove("`mcp.servers.agentmail` / `mcp.agentmail`")
+        ByHand::Remove("`mcp.servers.agent-communication` / `mcp.agent-communication`")
     }
 }
 
 /// The snippet to add by hand.
 fn snippet(bin: &str) -> String {
     super::json::pretty(
-        &json!({"mcp": {"servers": {"agentmail": server(bin)}}}),
+        &json!({"mcp": {"servers": {"agent-communication": server(bin)}}}),
         "  ",
         "",
     )
@@ -331,12 +333,12 @@ fn plan_config(path: PathBuf, install: bool, bin: &str) -> Result<Option<Change>
         if new == value {
             return Ok(None);
         }
-        let jsonc = "uses JSONC syntax (comments or trailing commas), which agentmail cannot keep \
+        let jsonc = "uses JSONC syntax (comments or trailing commas), which agent-communication cannot keep \
                      when it edits the file; nothing was changed";
         if install {
             let v1 = match value.get("mcp") {
-                Some(Value::Object(mcp)) if mcp.contains_key("agentmail") => {
-                    " Also delete the \"agentmail\" entry directly under \"mcp\" (an old shape), \
+                Some(Value::Object(mcp)) if mcp.contains_key("agent-communication") => {
+                    " Also delete the \"agent-communication\" entry directly under \"mcp\" (an old shape), \
                      first copying any \"environment\", \"cwd\", \"timeout\" or \"protocol\" \
                      it has into the new entry."
                 }
@@ -344,15 +346,15 @@ fn plan_config(path: PathBuf, install: bool, bin: &str) -> Result<Option<Change>
             };
             bail!(
                 "{} {jsonc}. Add this by hand, merging it into the \"mcp\" there in place of any \
-                 \"agentmail\" entry in \"mcp\" → \"servers\".{v1} Then run the install again \
+                 \"agent-communication\" entry in \"mcp\" → \"servers\".{v1} Then run the install again \
                  to add the plugin:\n{}",
                 path.display(),
                 snippet(bin)
             );
         }
         bail!(
-            "{} {jsonc}. Remove the \"agentmail\" entry from \"mcp\" → \"servers\" (and any \
-             \"agentmail\" directly under \"mcp\") by hand, then run the uninstall again to \
+            "{} {jsonc}. Remove the \"agent-communication\" entry from \"mcp\" → \"servers\" (and any \
+             \"agent-communication\" directly under \"mcp\") by hand, then run the uninstall again to \
              remove the plugin.",
             path.display()
         );
@@ -364,7 +366,7 @@ fn plan_config(path: PathBuf, install: bool, bin: &str) -> Result<Option<Change>
     Ok(file.change(new, !install, &strip))
 }
 
-/// Whether `text` is a plugin some version of agentmail wrote, as it
+/// Whether `text` is a plugin some version of agent-communication wrote, as it
 /// wrote it (for any binary): its last line is the digest of the text
 /// above ([`sign`]). A copy the user edited is not.
 fn pristine(text: &str) -> bool {
@@ -376,9 +378,9 @@ fn pristine(text: &str) -> bool {
     is_plugin(body) && last.starts_with(DIGEST_PREFIX) && sign(body.to_string()) == text
 }
 
-/// Where to save `before`, agentmail's plugin at `path`, before it is
+/// Where to save `before`, agent-communication's plugin at `path`, before it is
 /// replaced or deleted, so that edits of the user's are never lost: nowhere
-/// when it is a plugin some agentmail version wrote, as it wrote it
+/// when it is a plugin some agent-communication version wrote, as it wrote it
 /// ([`pristine`]), or its backup `bak` already holds it; else that backup,
 /// unless it holds something else to keep (`bak_kept`), then the first free
 /// `<backup>.<n>`.
@@ -402,13 +404,13 @@ fn save_edits(path: &Path, before: &str, bak: Option<&str>, bak_kept: bool) -> O
 /// The plugin's change, if any.
 ///
 /// Install never writes through a symlink (the file it points to, perhaps
-/// a source checkout, is not agentmail's to change): it refuses. Uninstall
-/// removes agentmail's plugin, and of a symlink only the link: when
-/// agentmail did not create the file (no marker) and its backup is not
-/// agentmail's plugin, that backup is put back instead. A plugin the user
-/// edited (one agentmail would not write) is saved before it is replaced
+/// a source checkout, is not agent-communication's to change): it refuses. Uninstall
+/// removes agent-communication's plugin, and of a symlink only the link: when
+/// agent-communication did not create the file (no marker) and its backup is not
+/// agent-communication's plugin, that backup is put back instead. A plugin the user
+/// edited (one agent-communication would not write) is saved before it is replaced
 /// or deleted ([`save_edits`]), and a backup holding such a copy (or one
-/// that is not agentmail's plugin and is not put back) is kept; a new
+/// that is not agent-communication's plugin and is not put back) is kept; a new
 /// install keeps it too.
 fn plan_plugin(path: PathBuf, install: bool, bin: &str) -> Result<Option<Change>> {
     let link = std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink());
@@ -441,21 +443,21 @@ fn plan_plugin(path: PathBuf, install: bool, bin: &str) -> Result<Option<Change>
             restore: restore.is_some(),
             after: restore,
             record_anew: false,
-            // The file a link points to is never agentmail's to delete,
+            // The file a link points to is never agent-communication's to delete,
             // even one it created before the user swapped in the link.
             unlink: link,
         }));
     }
     if link {
         bail!(
-            "{} is a symbolic link; agentmail does not write through it and left it unchanged. \
+            "{} is a symbolic link; agent-communication does not write through it and left it unchanged. \
              Remove the link and run the install again.",
             path.display()
         );
     }
     if !ours {
         bail!(
-            "{} exists and is not agentmail's plugin; agentmail left it unchanged. Move it away and run the install again.",
+            "{} exists and is not agent-communication's plugin; agent-communication left it unchanged. Move it away and run the install again.",
             path.display()
         );
     }
@@ -463,8 +465,8 @@ fn plan_plugin(path: PathBuf, install: bool, bin: &str) -> Result<Option<Change>
     if before.as_deref() == Some(after.as_str()) {
         return Ok(None);
     }
-    // A backup of the file before agentmail is written only where there is
-    // none and agentmail did not create the file (an earlier version's
+    // A backup of the file before agent-communication is written only where there is
+    // none and agent-communication did not create the file (an earlier version's
     // plugin is no original to keep: [`apply`] writes none). Otherwise an
     // edited plugin is saved, as the backup when there is none, else
     // beside it.
@@ -476,7 +478,7 @@ fn plan_plugin(path: PathBuf, install: bool, bin: &str) -> Result<Option<Change>
     };
     // A plugin that is not there yet starts a new record: any backup or
     // marker of an earlier one no longer describes it, except a backup
-    // holding an edited agentmail plugin, which is kept.
+    // holding an edited agent-communication plugin, which is kept.
     let record_anew =
         before.is_none() && !bak.as_deref().is_some_and(|b| is_plugin(b) && bak_worth);
     Ok(Some(Change {
@@ -508,18 +510,20 @@ pub(super) fn plan(o: &InstallOpts, env: &Env, install: bool) -> Result<Vec<Chan
     }
     // All are planned before any is written: a refusal changes nothing.
     let plugin_dir = plugin.parent().expect("a plugins directory");
-    let legacy = plugin_dir.with_file_name("plugin").join("agentmail.js");
+    let legacy = plugin_dir
+        .with_file_name("plugin")
+        .join("agent-communication.js");
     let plugin = plan_plugin(plugin, install, bin)?;
     // opencode also loads `plugin/`, before `plugins/`, and runs only the
-    // first plugin of each id: an agentmail plugin there would shadow the
+    // first plugin of each id: an agent-communication plugin there would shadow the
     // installed one, so both install and uninstall remove it. A link
     // there is the user's setup (a dev or dotfiles copy), as in
     // `plugins/`: install refuses it rather than removing it.
     let legacy = plan_plugin(legacy, false, bin)?;
     if install && let Some(c) = legacy.as_ref().filter(|c| c.unlink) {
         bail!(
-            "{} is a symbolic link to an agentmail plugin, which shadows the installed one; \
-             agentmail left it unchanged. Remove the link and run the install again.",
+            "{} is a symbolic link to an agent-communication plugin, which shadows the installed one; \
+             agent-communication left it unchanged. Remove the link and run the install again.",
             c.path.display()
         );
     }

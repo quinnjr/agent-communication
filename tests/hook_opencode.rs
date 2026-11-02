@@ -1,4 +1,4 @@
-//! Harness Task 6: `agentmail hook status|wait --harness opencode`, the
+//! Harness Task 6: `agent-communication hook status|wait --harness opencode`, the
 //! JSON the opencode plugin reads.
 //!
 //! opencode runs every session in one shared process, so the plugin names
@@ -12,11 +12,11 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::time::Duration;
 
-use agentmail::hook::{self, HookArgs, HookEvent, HookOutput};
-use agentmail::model::{Harness, ProcId, SessionKey};
-use agentmail::paths::Paths;
-use agentmail::procinfo;
-use agentmail::protocol::{Caller, Request};
+use agent_communication::hook::{self, HookArgs, HookEvent, HookOutput};
+use agent_communication::model::{Harness, ProcId, SessionKey};
+use agent_communication::paths::Paths;
+use agent_communication::procinfo;
+use agent_communication::protocol::{Caller, Request};
 use common::{TestDaemon, send_req};
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -28,8 +28,14 @@ struct Env(HashMap<String, OsString>);
 impl Env {
     fn of(paths: &Paths) -> Env {
         let mut m = HashMap::new();
-        m.insert("AGENTMAIL_DATA_DIR".into(), paths.data_dir.clone().into());
-        m.insert("AGENTMAIL_SOCKET".into(), paths.socket.clone().into());
+        m.insert(
+            "AGENT_COMMUNICATION_DATA_DIR".into(),
+            paths.data_dir.clone().into(),
+        );
+        m.insert(
+            "AGENT_COMMUNICATION_SOCKET".into(),
+            paths.socket.clone().into(),
+        );
         Env(m)
     }
 
@@ -283,12 +289,12 @@ async fn status_empty_when_unregistered() {
     send(&d, &a, "schema", false).await;
     let env = Env::of(&d.paths);
     assert_eq!(status(&env, "ses_unknown", true).await, json!({}));
-    // `AGENTMAIL_ADDRESS` (inherited by the opencode process) never names
+    // `AGENT_COMMUNICATION_ADDRESS` (inherited by the opencode process) never names
     // the session's agent.
-    let addr = env.clone().with("AGENTMAIL_ADDRESS", &a);
+    let addr = env.clone().with("AGENT_COMMUNICATION_ADDRESS", &a);
     assert_eq!(status(&addr, "ses_unknown", true).await, json!({}));
     // The human has nothing to say.
-    let human = env.clone().with("AGENTMAIL_HUMAN", "1");
+    let human = env.clone().with("AGENT_COMMUNICATION_HUMAN", "1");
     assert_eq!(status(&human, "ses_a", true).await, json!({}));
     // No session: opencode's shared process is nobody's.
     let out = run(&env, HookEvent::Status, None, true, b"").await;
@@ -346,7 +352,7 @@ async fn signoff_acts_only_as_the_session_agent() {
         .as_str()
         .unwrap()
         .to_string();
-    let env = Env::of(&d.paths).with("AGENTMAIL_ADDRESS", &docs);
+    let env = Env::of(&d.paths).with("AGENT_COMMUNICATION_ADDRESS", &docs);
     let procs = Caller::Procs {
         procs: procinfo::ancestors(std::process::id()),
     };
@@ -521,13 +527,13 @@ async fn rewait_after_timeout_wakes_for_a_question_that_came_between() {
 
 #[tokio::test]
 async fn global_wake_switch_turns_waking_off() {
-    // `AGENTMAIL_WAKE=0` in opencode's environment (the plugin passes it
+    // `AGENT_COMMUNICATION_WAKE=0` in opencode's environment (the plugin passes it
     // on): status reports `wake` off, so the plugin starts no waiter, and
     // a wait skips even with mail there.
     let d = TestDaemon::start().await;
     let a = register(&d, "backend", "ses_a", true).await;
     send(&d, &a, "schema", false).await;
-    let env = Env::of(&d.paths).with("AGENTMAIL_WAKE", "0");
+    let env = Env::of(&d.paths).with("AGENT_COMMUNICATION_WAKE", "0");
     let v = status(&env, "ses_a", false).await;
     assert_eq!(v["wake"], false, "{v}");
     let v = joined(spawn_wait(&env, "ses_a", false, None)).await;
@@ -649,16 +655,16 @@ async fn status_latency_under_20ms() {
     assert!(median < Duration::from_millis(20), "median {median:?}");
 }
 
-const BIN: &str = env!("CARGO_BIN_EXE_agentmail");
+const BIN: &str = env!("CARGO_BIN_EXE_agent-communication");
 
 fn cli(paths: &Paths, args: &[&str], stdin: &str) -> std::process::Output {
     assert_cmd::Command::new(BIN)
         .args(args)
-        .env("AGENTMAIL_DATA_DIR", &paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &paths.socket)
-        .env_remove("AGENTMAIL_ADDRESS")
-        .env_remove("AGENTMAIL_HUMAN")
-        .env_remove("AGENTMAIL_WAKE")
+        .env("AGENT_COMMUNICATION_DATA_DIR", &paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &paths.socket)
+        .env_remove("AGENT_COMMUNICATION_ADDRESS")
+        .env_remove("AGENT_COMMUNICATION_HUMAN")
+        .env_remove("AGENT_COMMUNICATION_WAKE")
         .env_remove("OPENCODE_SESSION_ID")
         .env_remove("KIRO_SESSION_ID")
         .env_remove("CLAUDE_PID")
@@ -757,7 +763,7 @@ fn cli_daemon_down_prints_empty_status_and_gone() {
         stdout_json(&cli(&paths, &wait, "")),
         json!({ "gone": true })
     );
-    // The human, by `--as human` as by `AGENTMAIL_HUMAN=1`: the same.
+    // The human, by `--as human` as by `AGENT_COMMUNICATION_HUMAN=1`: the same.
     for human in [&["--as", "human"][..], &[][..]] {
         let env_human = human.is_empty();
         for (args, want) in [
@@ -767,17 +773,17 @@ fn cli_daemon_down_prints_empty_status_and_gone() {
             let mut cmd = assert_cmd::Command::new(BIN);
             cmd.args(human)
                 .args(args)
-                .env("AGENTMAIL_DATA_DIR", &paths.data_dir)
-                .env("AGENTMAIL_SOCKET", &paths.socket)
-                .env_remove("AGENTMAIL_ADDRESS")
+                .env("AGENT_COMMUNICATION_DATA_DIR", &paths.data_dir)
+                .env("AGENT_COMMUNICATION_SOCKET", &paths.socket)
+                .env_remove("AGENT_COMMUNICATION_ADDRESS")
                 .env_remove("OPENCODE_SESSION_ID")
-                .env_remove("AGENTMAIL_BIN")
+                .env_remove("AGENT_COMMUNICATION_BIN")
                 .timeout(Duration::from_secs(20));
             if env_human {
-                cmd.env("AGENTMAIL_HUMAN", "1");
+                cmd.env("AGENT_COMMUNICATION_HUMAN", "1");
             } else {
-                cmd.env_remove("AGENTMAIL_HUMAN");
-                cmd.env_remove("AGENTMAIL_WAKE");
+                cmd.env_remove("AGENT_COMMUNICATION_HUMAN");
+                cmd.env_remove("AGENT_COMMUNICATION_WAKE");
             }
             assert_eq!(
                 stdout_json(&cmd.output().unwrap()),
@@ -791,10 +797,10 @@ fn cli_daemon_down_prints_empty_status_and_gone() {
     let off = ["hook", "signoff", "--harness", "opencode", "--session", "s"];
     let out = assert_cmd::Command::new(BIN)
         .args(off)
-        .env("AGENTMAIL_DATA_DIR", &paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &paths.socket)
+        .env("AGENT_COMMUNICATION_DATA_DIR", &paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &paths.socket)
         .env("OPENCODE_SESSION_ID", "s")
-        .env_remove("AGENTMAIL_ADDRESS")
+        .env_remove("AGENT_COMMUNICATION_ADDRESS")
         .timeout(Duration::from_secs(20))
         .output()
         .unwrap();
@@ -823,11 +829,11 @@ async fn cli_wait_ends_on_sigterm_with_nothing_recorded() {
             "--session",
             "ses_a",
         ])
-        .env("AGENTMAIL_DATA_DIR", &d.paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &d.paths.socket)
-        .env_remove("AGENTMAIL_ADDRESS")
-        .env_remove("AGENTMAIL_HUMAN")
-        .env_remove("AGENTMAIL_WAKE")
+        .env("AGENT_COMMUNICATION_DATA_DIR", &d.paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &d.paths.socket)
+        .env_remove("AGENT_COMMUNICATION_ADDRESS")
+        .env_remove("AGENT_COMMUNICATION_HUMAN")
+        .env_remove("AGENT_COMMUNICATION_WAKE")
         .env_remove("OPENCODE_SESSION_ID")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Renamed from agentmail to **agent-communication**. The crate, binary,
+  MCP server name, opencode plugin (`agent-communication.js`), systemd unit
+  (`agent-communication.service`), data directory, socket, lock files and
+  install markers all use the new name, and every environment variable
+  moved from `AGENTMAIL_*` to `AGENT_COMMUNICATION_*`. The GitHub repository
+  is now `quinnjr/agent-communication`.
+- There is no automatic migration from 0.1.0. Before installing, run
+  `agentmail uninstall --harness <h>` for each harness you set up (and
+  `agentmail uninstall --service` if you used the systemd unit), then
+  `agent-communication install` again. Mail in
+  `~/.local/share/agentmail/` is not carried over.
+
 ## 0.1.0 (2026-10-28)
 
 First release.

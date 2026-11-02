@@ -1,7 +1,7 @@
 // Unit tests for the opencode plugin: `bun test plugin/`.
 //
 // opencode's plugin context is mocked (it records hook registrations and
-// `session.synthetic` calls, and feeds events), and a fake `agentmail`
+// `session.synthetic` calls, and feeds events), and a fake `agent-communication`
 // script on PATH answers with canned JSON and logs how it was called.
 
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
@@ -9,26 +9,26 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import plugin from "./agentmail.js";
+import plugin from "./agent-communication.js";
 
 let root;
 let fake;
 
-// The fake agentmail. `hook status` prints `status.<session>.json` (else
+// The fake agent-communication. `hook status` prints `status.<session>.json` (else
 // `{}`). `hook wait` prints the next line of `wait.<session>` and removes
 // it, or, with none left, sleeps until killed (writing its pid to
 // `waiting.<session>.pid`). Every call is logged to `calls.log` as one
 // JSON line with its arguments, stdin and the variables that matter.
 const FAKE = `#!/usr/bin/env bun
 const fs = require("node:fs");
-const dir = process.env.AGENTMAIL_FAKE_DIR;
+const dir = process.env.AGENT_COMMUNICATION_FAKE_DIR;
 const args = process.argv.slice(2);
 const i = args.indexOf("--session");
 const session = i >= 0 ? args[i + 1] : "";
 const cmd = args.slice(0, 2).join(" ");
 // Every command reads its stdin to the end, as the real one does.
 const stdin = fs.readFileSync(0, "utf8");
-const line = { args, stdin, session_env: process.env.OPENCODE_SESSION_ID ?? "", address: process.env.AGENTMAIL_ADDRESS ?? "", human: process.env.AGENTMAIL_HUMAN ?? "" };
+const line = { args, stdin, session_env: process.env.OPENCODE_SESSION_ID ?? "", address: process.env.AGENT_COMMUNICATION_ADDRESS ?? "", human: process.env.AGENT_COMMUNICATION_HUMAN ?? "" };
 fs.appendFileSync(dir + "/calls.log", JSON.stringify(line) + "\\n");
 if (cmd === "hook status") {
   const f = dir + "/status." + session + ".json";
@@ -43,7 +43,7 @@ if (cmd === "hook status") {
     try { v = JSON.parse(answer); } catch {}
     if (v && v._print_on_term) {
       // Answer only when killed, then die by the signal anyway, as the real
-      // agentmail does when the kill lands after it recorded and printed a
+      // agent-communication does when the kill lands after it recorded and printed a
       // wake: the answer was on its way when the plugin killed it.
       delete v._print_on_term;
       process.on("SIGTERM", () => {
@@ -69,15 +69,15 @@ if (cmd === "hook status") {
 `;
 
 beforeAll(() => {
-  root = mkdtempSync(join(tmpdir(), "agentmail-plugin-"));
+  root = mkdtempSync(join(tmpdir(), "agent-communication-plugin-"));
   mkdirSync(join(root, "bin"));
-  writeFileSync(join(root, "bin", "agentmail"), FAKE);
-  chmodSync(join(root, "bin", "agentmail"), 0o755);
+  writeFileSync(join(root, "bin", "agent-communication"), FAKE);
+  chmodSync(join(root, "bin", "agent-communication"), 0o755);
   process.env.PATH = `${join(root, "bin")}:${process.env.PATH}`;
   // Inherited from the shell opencode was started in: the human's own
-  // identity there, which must not reach the plugin's agentmail calls.
-  process.env.AGENTMAIL_ADDRESS = "outer-agent";
-  process.env.AGENTMAIL_HUMAN = "1";
+  // identity there, which must not reach the plugin's agent-communication calls.
+  process.env.AGENT_COMMUNICATION_ADDRESS = "outer-agent";
+  process.env.AGENT_COMMUNICATION_HUMAN = "1";
 });
 
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -92,7 +92,7 @@ afterEach(async () => {
 /** A fresh directory of canned answers for one test. */
 function fakeDir() {
   fake = mkdtempSync(join(root, "case-"));
-  process.env.AGENTMAIL_FAKE_DIR = fake;
+  process.env.AGENT_COMMUNICATION_FAKE_DIR = fake;
   return fake;
 }
 
@@ -222,7 +222,7 @@ const registered = (extra = {}) => ({
 });
 
 test("plugin_shape", () => {
-  expect(plugin.id).toBe("agentmail");
+  expect(plugin.id).toBe("agent-communication");
   expect(typeof plugin.setup).toBe("function");
 });
 
@@ -238,7 +238,7 @@ test("appends_reminder_after_tool", async () => {
   expect(ctx.synthetic).toEqual([]);
   const [c] = calls();
   expect(c.args).toEqual(["hook", "status", "--harness", "opencode", "--session", "ses_a", "--surface-urgent"]);
-  // The identity opencode inherited never reaches agentmail.
+  // The identity opencode inherited never reaches agent-communication.
   expect(c.address).toBe("");
   expect(c.human).toBe("");
 
@@ -262,7 +262,7 @@ test("urgent_steers_once", async () => {
   expect(ctx.synthetic).toEqual([{ sessionID: "ses_a", text: "🚨 prod", delivery: "steer", resume: false }]);
   // Steered, not also appended.
   expect(ev.result.content).toHaveLength(1);
-  // agentmail marked it surfaced: the next status has no urgent mail, and
+  // agent-communication marked it surfaced: the next status has no urgent mail, and
   // the plugin only reminds.
   setStatus("ses_a", registered({ unread: 1, text: { urgent: null, reminder: "📬 1" } }));
   const next = toolEvent("ses_a");
@@ -426,7 +426,7 @@ test("cleanup_aborts_waiters", async () => {
 
 test("no_output_when_unregistered", async () => {
   const { ctx } = await start();
-  // No status file: the fake prints `{}`, as agentmail does for a session
+  // No status file: the fake prints `{}`, as agent-communication does for a session
   // without an agent or with the daemon down.
   const ev = toolEvent("ses_x");
   await ctx.hooks["execute.after"](ev);
@@ -462,13 +462,13 @@ test("no_waiter_without_wake", async () => {
 });
 
 test("installed_path_is_substituted_whole", () => {
-  // install replaces every `__AGENTMAIL_BIN__` with the binary's path; the
+  // install replaces every `__AGENT_COMMUNICATION_BIN__` with the binary's path; the
   // fallback check must survive that.
-  const src = readFileSync(join(import.meta.dir, "agentmail.js"), "utf8");
-  const installed = src.replaceAll("__AGENTMAIL_BIN__", "/opt/agentmail/bin/agentmail");
-  expect(installed).toContain('const BIN = "/opt/agentmail/bin/agentmail";');
-  expect(installed).toContain('"__AGENTMAIL" + "_BIN__"');
-  expect(src.split("__AGENTMAIL_BIN__").length - 1).toBe(1);
+  const src = readFileSync(join(import.meta.dir, "agent-communication.js"), "utf8");
+  const installed = src.replaceAll("__AGENT_COMMUNICATION_BIN__", "/opt/agent-communication/bin/agent-communication");
+  expect(installed).toContain('const BIN = "/opt/agent-communication/bin/agent-communication";');
+  expect(installed).toContain('"__AGENT_COMMUNICATION" + "_BIN__"');
+  expect(src.split("__AGENT_COMMUNICATION_BIN__").length - 1).toBe(1);
 });
 
 test("turn_start_during_lookup_wins", async () => {
@@ -645,7 +645,7 @@ test("wake_dropped_while_busy_is_not_repeated_after_a_tool_reminder", async () =
 
 test("busy_while_idle_queues_questions_that_opened_since", async () => {
   // A question arrives after the turn end's status, before the wait looks:
-  // agentmail answers busy (the questions would continue the turn). The
+  // agent-communication answers busy (the questions would continue the turn). The
   // session is still idle, so the plugin queues them itself.
   const { ctx } = await start();
   setStatus("ses_a", registered());
@@ -730,7 +730,7 @@ test("urgent_for_a_failed_tool_is_kept_when_steering_fails", async () => {
     },
   });
   // A failed tool call (nothing to append to), and the steer fails: the
-  // urgent text agentmail marked surfaced is kept...
+  // urgent text agent-communication marked surfaced is kept...
   setStatus("ses_a", registered({ unread: 1, urgent: [{ id: "m1" }], text: { urgent: "🚨 prod" } }));
   const failed = { tool: "shell", sessionID: "ses_a", status: "error", error: new Error("x") };
   await ctx.hooks["execute.after"](failed);
@@ -884,16 +884,16 @@ test("waiter_after_queued_urgent_mail_counts_mail_since_the_last_wake", async ()
 });
 
 // opencode's `run --standalone` talks to its server (`serve --stdio`)
-// over that process's stdin. Every agentmail command reads its stdin to
+// over that process's stdin. Every agent-communication command reads its stdin to
 // the end, so one that inherited it would take the server's requests and
 // hang the session: none may.
-test("agentmail_commands_never_inherit_opencodes_stdin", async () => {
+test("agent_communication_commands_never_inherit_opencodes_stdin", async () => {
   const dir = fakeDir();
   setStatus("s1", { address: "a-1", unread: 0, text: {} });
   const runner = join(dir, "runner.js");
   writeFileSync(
     runner,
-    `import plugin from ${JSON.stringify(join(import.meta.dir, "agentmail.js"))};
+    `import plugin from ${JSON.stringify(join(import.meta.dir, "agent-communication.js"))};
 const hooks = {};
 const queue = [];
 let wake = null;

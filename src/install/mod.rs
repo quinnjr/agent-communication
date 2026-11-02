@@ -1,19 +1,19 @@
-//! `agentmail install` / `uninstall`: wire agentmail into a harness's own
+//! `agent-communication install` / `uninstall`: wire agent-communication into a harness's own
 //! config files.
 //!
 //! Planning reads the files and works out each one's new text
 //! ([`plan_install`], [`plan_uninstall`]); nothing is written until
-//! [`apply`]. Only agentmail's own entries are touched (hook commands that
-//! run `agentmail hook`, the MCP server named `agentmail`), everything else
+//! [`apply`]. Only agent-communication's own entries are touched (hook commands that
+//! run `agent-communication hook`, the MCP server named `agent-communication`), everything else
 //! in a file is kept as it was written ([`json::render`]), and planning
 //! twice in a row finds nothing more to do. Before a file is first changed
-//! its original is saved next to it as `<file>.agentmail.bak`; a file
-//! agentmail creates is marked as such by `<file>.agentmail.created`, and
+//! its original is saved next to it as `<file>.agent-communication.bak`; a file
+//! agent-communication creates is marked as such by `<file>.agent-communication.created`, and
 //! only such a file is ever deleted again, or one holding nothing but
-//! agentmail's own content: an emptied config, or agentmail's opencode
+//! agent-communication's own content: an emptied config, or agent-communication's opencode
 //! plugin, whose text is first saved ([`Change::save`]) when the user
 //! edited it. An install into a file holding
-//! none of agentmail's entries takes that record anew, so an earlier
+//! none of agent-communication's entries takes that record anew, so an earlier
 //! install's record never outlives an uninstall.
 
 mod claude;
@@ -42,7 +42,7 @@ pub struct InstallOpts {
     /// kiro only: install the Stop hook that waits for mail to wake an
     /// idle agent, and have kiro agents register with `wake` on.
     pub kiro_wake: bool,
-    /// The absolute path of the `agentmail` binary the harness should run.
+    /// The absolute path of the `agent-communication` binary the harness should run.
     pub bin: PathBuf,
 }
 
@@ -53,18 +53,18 @@ pub struct Change {
     pub path: PathBuf,
     pub before: Option<String>,
     pub after: Option<String>,
-    /// The file holds none of agentmail's entries (an install): `before` is
-    /// the file before agentmail, replacing any backup or marker an earlier
+    /// The file holds none of agent-communication's entries (an install): `before` is
+    /// the file before agent-communication, replacing any backup or marker an earlier
     /// install left, which no longer describe it.
     pub record_anew: bool,
     /// Deleting `path`, a symlink, removes only the link (and its marker),
-    /// never the file it points to, even one agentmail created.
+    /// never the file it points to, even one agent-communication created.
     pub unlink: bool,
-    /// Before the change, `before` is written here: it is agentmail's file
+    /// Before the change, `before` is written here: it is agent-communication's file
     /// with edits of the user's (the opencode plugin), never discarded.
     pub save: Option<PathBuf>,
     /// Deleting `path` leaves its backup, which holds something to keep
-    /// (such as an edited copy of agentmail's file).
+    /// (such as an edited copy of agent-communication's file).
     pub keep_backup: bool,
     /// `after` is the file's backup, which is put back in place of `path`
     /// (the opencode plugin, on uninstall): moved there, so it keeps its
@@ -110,29 +110,32 @@ impl Env {
     }
 }
 
-/// The changes that install agentmail for `o.harness`.
+/// The changes that install agent-communication for `o.harness`.
 pub fn plan_install(o: &InstallOpts, env: &Env) -> Result<Vec<Change>> {
     match o.harness {
         Harness::ClaudeCode => claude::plan(o, env, true),
         Harness::Opencode => opencode::plan(o, env, true),
         Harness::Kiro => kiro::plan(o, env, true),
-        h => bail!("agentmail cannot install into {} yet", h.as_str()),
+        h => bail!("agent-communication cannot install into {} yet", h.as_str()),
     }
 }
 
-/// The changes that remove agentmail from `o.harness`.
+/// The changes that remove agent-communication from `o.harness`.
 pub fn plan_uninstall(o: &InstallOpts, env: &Env) -> Result<Vec<Change>> {
     match o.harness {
         Harness::ClaudeCode => claude::plan(o, env, false),
         Harness::Opencode => opencode::plan(o, env, false),
         Harness::Kiro => kiro::plan(o, env, false),
-        h => bail!("agentmail cannot uninstall from {} yet", h.as_str()),
+        h => bail!(
+            "agent-communication cannot uninstall from {} yet",
+            h.as_str()
+        ),
     }
 }
 
 /// One-line notes for the user about installing (`install`) or
-/// uninstalling agentmail for `o.harness`, from the files as they are
-/// before the change: for opencode, when the agentmail plugin that runs is
+/// uninstalling agent-communication for `o.harness`, from the files as they are
+/// before the change: for opencode, when the agent-communication plugin that runs is
 /// not the one this command installs or removes; for kiro, that only its V3
 /// engine is supported, and what `--kiro-wake` does.
 pub fn notes(o: &InstallOpts, env: &Env, install: bool) -> Result<Vec<String>> {
@@ -149,15 +152,15 @@ pub fn kiro_wake_installed(env: &Env) -> bool {
     kiro::wake_installed(env)
 }
 
-/// Where the original of `path` is kept: `<path>.agentmail.bak`.
+/// Where the original of `path` is kept: `<path>.agent-communication.bak`.
 pub fn backup_path(path: &Path) -> PathBuf {
-    with_suffix(path, ".agentmail.bak")
+    with_suffix(path, ".agent-communication.bak")
 }
 
-/// The marker saying agentmail created `path`: `<path>.agentmail.created`.
-/// It lists the directories agentmail created for the file, one per line.
+/// The marker saying agent-communication created `path`: `<path>.agent-communication.created`.
+/// It lists the directories agent-communication created for the file, one per line.
 pub fn created_marker_path(path: &Path) -> PathBuf {
-    with_suffix(path, ".agentmail.created")
+    with_suffix(path, ".agent-communication.created")
 }
 
 fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
@@ -168,11 +171,11 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
 
 /// Make `changes`. First checks that every file still has the text it was
 /// planned from (else nothing is written: run the command again). Then, per
-/// file: saves the original as `<path>.agentmail.bak` unless a backup is
-/// already there or agentmail created the file (its marker is there: there
+/// file: saves the original as `<path>.agent-communication.bak` unless a backup is
+/// already there or agent-communication created the file (its marker is there: there
 /// is no original), or, for a file that does not exist yet, records that
-/// agentmail creates it (and the directories it creates for it) in
-/// `<path>.agentmail.created`. With [`Change::record_anew`] the earlier
+/// agent-communication creates it (and the directories it creates for it) in
+/// `<path>.agent-communication.created`. With [`Change::record_anew`] the earlier
 /// record is dropped first: the backup is replaced (or removed, for a file
 /// that does not exist) and any marker removed (and, for a file that does
 /// not exist, written again). Where [`Change::save`] says, `before` is
@@ -180,17 +183,17 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
 /// same directory, renamed over it), keeping its permissions; a new file is
 /// private to its owner (mode 0600). A symlink is followed, even one whose
 /// target does not exist yet: the file it points to changes, the link
-/// stays. A file to delete (one agentmail created, emptied by an
-/// uninstall, or agentmail's opencode plugin) goes with its marker and,
+/// stays. A file to delete (one agent-communication created, emptied by an
+/// uninstall, or agent-communication's opencode plugin) goes with its marker and,
 /// unless [`Change::keep_backup`] or [`Change::save`] keeps it, its backup
-/// (a symlink agentmail did not create the target of, or one
+/// (a symlink agent-communication did not create the target of, or one
 /// [`Change::unlink`] marks: only the link and its marker), and so do the
-/// directories agentmail created for it once they are empty.
+/// directories agent-communication created for it once they are empty.
 pub fn apply(changes: &[Change]) -> Result<()> {
     for c in changes {
         if read_opt(&c.path)? != c.before {
             bail!(
-                "{} changed while agentmail was planning its edit; nothing was written, run the command again",
+                "{} changed while agent-communication was planning its edit; nothing was written, run the command again",
                 c.path.display()
             );
         }
@@ -287,11 +290,11 @@ fn apply_one(c: &Change) -> Result<Vec<PathBuf>> {
         return Ok(Vec::new());
     }
     let Some(after) = &c.after else {
-        // Only agentmail's own file is deleted ([`JsonFile::change`], the
-        // opencode plugin): any backup of it holds nothing but agentmail's
+        // Only agent-communication's own file is deleted ([`JsonFile::change`], the
+        // opencode plugin): any backup of it holds nothing but agent-communication's
         // entries, unless [`Change::keep_backup`] says it holds more (and
         // [`Change::save`] has already put the file's edited text away). A
-        // file agentmail created (its marker says so) goes even behind a
+        // file agent-communication created (its marker says so) goes even behind a
         // symlink, which stays, unless [`Change::unlink`] says
         // only the link goes. Otherwise of a symlink only the link goes,
         // never the file it points to, and a backup beside it, which may
@@ -328,8 +331,8 @@ fn apply_one(c: &Change) -> Result<Vec<PathBuf>> {
             }
         }
     } else if let Some(before) = &c.before
-        // A file agentmail created had no original to keep: a backup of
-        // agentmail's own earlier text would only be left behind.
+        // A file agent-communication created had no original to keep: a backup of
+        // agent-communication's own earlier text would only be left behind.
         && std::fs::symlink_metadata(&marker).is_err()
     {
         write_backup(&bak, perms.as_ref(), |f| f.write_all(before.as_bytes()))
@@ -347,7 +350,7 @@ fn apply_one(c: &Change) -> Result<Vec<PathBuf>> {
     if c.before.is_none() && std::fs::symlink_metadata(&bak).is_err() {
         // Recorded before the file is created: without it an uninstall
         // keeps the file (as `{}`) rather than delete what it cannot tell
-        // agentmail created.
+        // agent-communication created.
         let list: String = new_dirs
             .iter()
             .filter_map(|d| d.to_str().filter(|s| !s.contains('\n')))
@@ -360,7 +363,10 @@ fn apply_one(c: &Change) -> Result<Vec<PathBuf>> {
         .file_name()
         .ok_or_else(|| anyhow!("{} has no file name", target.display()))?
         .to_string_lossy();
-    let tmp = dir.join(format!(".{name}.agentmail-{}.tmp", std::process::id()));
+    let tmp = dir.join(format!(
+        ".{name}.agent-communication-{}.tmp",
+        std::process::id()
+    ));
     let write = || -> Result<()> {
         let mut f = std::fs::File::create(&tmp)?;
         match &perms {
@@ -477,11 +483,11 @@ fn copy_new(from: &Path, to: &Path) -> std::io::Result<()> {
     copied
 }
 
-/// What to do by hand with a config agentmail cannot read.
+/// What to do by hand with a config agent-communication cannot read.
 enum ByHand<'a> {
     /// Install: the entry to add (a snippet), made only when needed.
     Add(&'a dyn Fn() -> String),
-    /// Uninstall: where agentmail's entry is, to remove.
+    /// Uninstall: where agent-communication's entry is, to remove.
     Remove(&'a str),
 }
 
@@ -495,7 +501,7 @@ impl ByHand<'_> {
             }
             ByHand::Add(entry) => format!("Add this by hand:\n{}", entry()),
             ByHand::Remove(entry) => format!(
-                "Fix it, or remove agentmail's entry ({entry}) by hand, then run the uninstall again."
+                "Fix it, or remove agent-communication's entry ({entry}) by hand, then run the uninstall again."
             ),
         }
     }
@@ -504,15 +510,15 @@ impl ByHand<'_> {
 /// A JSON config file as read for planning.
 ///
 /// Later install tasks build on it: [`JsonFile::read`] the file, edit a
-/// copy of [`JsonFile::value`] (only agentmail's entries), then
-/// [`JsonFile::change`] with a `strip` that removes agentmail's entries.
+/// copy of [`JsonFile::value`] (only agent-communication's entries), then
+/// [`JsonFile::change`] with a `strip` that removes agent-communication's entries.
 struct JsonFile {
     path: PathBuf,
     before: Option<String>,
     value: Map<String, Value>,
-    /// The file before agentmail first changed it, as far as known: its
+    /// The file before agent-communication first changed it, as far as known: its
     /// backup when there is one, else the file as it is now; `None` when
-    /// agentmail created it (its marker is there) or it does not exist.
+    /// agent-communication created it (its marker is there) or it does not exist.
     original: Option<Map<String, Value>>,
 }
 
@@ -525,17 +531,17 @@ impl JsonFile {
         let value = match json::parse(before.as_deref().unwrap_or("")) {
             Ok(Value::Object(m)) => m,
             Ok(_) => bail!(
-                "{} is not a JSON object; agentmail left it unchanged. {}",
+                "{} is not a JSON object; agent-communication left it unchanged. {}",
                 path.display(),
                 hand.advice(false)
             ),
             Err(e) => bail!(
-                "cannot parse {}: {e}; agentmail left it unchanged. {}",
+                "cannot parse {}: {e}; agent-communication left it unchanged. {}",
                 path.display(),
                 hand.advice(true)
             ),
         };
-        // Only the marker says agentmail created the file. A backup, even
+        // Only the marker says agent-communication created the file. A backup, even
         // one that cannot be read as an object, shows it existed before.
         let original = if std::fs::symlink_metadata(created_marker_path(&path)).is_ok() {
             None
@@ -556,11 +562,11 @@ impl JsonFile {
         })
     }
 
-    /// The change to `new`, if any. `strip` removes agentmail's entries
+    /// The change to `new`, if any. `strip` removes agent-communication's entries
     /// from an object (and nothing else); with it the file as it was
-    /// before agentmail is worked out, so that containers agentmail's
+    /// before agent-communication is worked out, so that containers agent-communication's
     /// entries emptied are removed only when they were not there before.
-    /// A file emptied by an uninstall is deleted only when agentmail
+    /// A file emptied by an uninstall is deleted only when agent-communication
     /// created it (its marker says so); else it is left as `{}`.
     fn change(
         self,
@@ -578,8 +584,8 @@ impl JsonFile {
         if new == self.value {
             return None;
         }
-        // Without agentmail's entries the file is as it was before
-        // agentmail: an older backup or marker no longer describes it.
+        // Without agent-communication's entries the file is as it was before
+        // agent-communication: an older backup or marker no longer describes it.
         let record_anew = !uninstall && {
             let mut s = self.value.clone();
             strip(&mut s);
@@ -605,7 +611,7 @@ impl JsonFile {
 
 /// Remove from `after` the containers (objects and arrays, at any depth of
 /// objects) that are empty there but held something in `before`, unless
-/// `orig` has them: agentmail emptied them and they were not there before
+/// `orig` has them: agent-communication emptied them and they were not there before
 /// it.
 fn prune_emptied(
     before: &Map<String, Value>,
@@ -684,26 +690,26 @@ fn shell_words(cmd: &str, n: usize) -> Vec<String> {
     words
 }
 
-/// Whether a hook command is agentmail's: it runs a program named
-/// `agentmail…` with `hook` as its first argument.
-pub fn is_agentmail_hook(cmd: &str) -> bool {
+/// Whether a hook command is agent-communication's: it runs a program named
+/// `agent-communication…` with `hook` as its first argument.
+pub fn is_agent_communication_hook(cmd: &str) -> bool {
     match shell_words(cmd, 2).as_slice() {
         [prog, sub] => {
             sub == "hook"
                 && Path::new(prog)
                     .file_name()
                     .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.starts_with("agentmail"))
+                    .is_some_and(|n| n.starts_with("agent-communication"))
         }
         _ => false,
     }
 }
 
-/// Whether a hook command is agentmail's when the binary is `bin`: as
-/// [`is_agentmail_hook`], or a program at `bin` itself (the same path, or
+/// Whether a hook command is agent-communication's when the binary is `bin`: as
+/// [`is_agent_communication_hook`], or a program at `bin` itself (the same path, or
 /// the same file once resolved) run with `hook`, whatever its file name.
 pub fn owns_hook(cmd: &str, bin: &Path) -> bool {
-    if is_agentmail_hook(cmd) {
+    if is_agent_communication_hook(cmd) {
         return true;
     }
     match shell_words(cmd, 2).as_slice() {
@@ -723,13 +729,16 @@ pub fn owns_hook(cmd: &str, bin: &Path) -> bool {
 fn bin_str(o: &InstallOpts) -> Result<&str> {
     if !o.bin.is_absolute() {
         bail!(
-            "the agentmail binary path {} is not absolute",
+            "the agent-communication binary path {} is not absolute",
             o.bin.display()
         );
     }
-    o.bin
-        .to_str()
-        .ok_or_else(|| anyhow!("the agentmail binary path {} is not UTF-8", o.bin.display()))
+    o.bin.to_str().ok_or_else(|| {
+        anyhow!(
+            "the agent-communication binary path {} is not UTF-8",
+            o.bin.display()
+        )
+    })
 }
 
 /// The object at `root[key]`, created when missing; an error when it is
@@ -744,7 +753,7 @@ fn object_at<'a>(
         .as_object_mut()
         .ok_or_else(|| {
             anyhow!(
-                "`{key}` in {} is not a JSON object; agentmail left the file unchanged",
+                "`{key}` in {} is not a JSON object; agent-communication left the file unchanged",
                 path.display()
             )
         })
@@ -906,25 +915,28 @@ mod tests {
 
     #[test]
     fn quoting_and_recognising_commands() {
-        assert_eq!(shell_quote("/usr/bin/agentmail"), "/usr/bin/agentmail");
+        assert_eq!(
+            shell_quote("/usr/bin/agent-communication"),
+            "/usr/bin/agent-communication"
+        );
         assert_eq!(shell_quote("/a b/it's"), r"'/a b/it'\''s'");
         for cmd in [
-            "/usr/bin/agentmail hook stop --harness claude-code",
-            "agentmail hook wait",
-            r"'/a b/it'\''s/agentmail' hook prompt",
-            "\"/a b/agentmail\" hook x",
-            "/x/agentmail-dev hook x",
+            "/usr/bin/agent-communication hook stop --harness claude-code",
+            "agent-communication hook wait",
+            r"'/a b/it'\''s/agent-communication' hook prompt",
+            "\"/a b/agent-communication\" hook x",
+            "/x/agent-communication-dev hook x",
         ] {
-            assert!(is_agentmail_hook(cmd), "{cmd}");
+            assert!(is_agent_communication_hook(cmd), "{cmd}");
         }
         for cmd in [
-            "agentmail send --to x",
-            "echo agentmail hook",
-            "/x/notagentmail hook",
-            "agentmail",
+            "agent-communication send --to x",
+            "echo agent-communication hook",
+            "/x/notagent-communication hook",
+            "agent-communication",
             "",
         ] {
-            assert!(!is_agentmail_hook(cmd), "{cmd}");
+            assert!(!is_agent_communication_hook(cmd), "{cmd}");
         }
     }
 
@@ -933,7 +945,7 @@ mod tests {
         let bin = Path::new("/x/am");
         assert!(owns_hook("/x/am hook stop --harness claude-code", bin));
         assert!(owns_hook("'/x/am' hook wait", bin));
-        assert!(owns_hook("/usr/bin/agentmail hook stop", bin));
+        assert!(owns_hook("/usr/bin/agent-communication hook stop", bin));
         assert!(!owns_hook("/x/am send", bin));
         assert!(!owns_hook("/y/am hook stop", bin));
     }
@@ -941,7 +953,7 @@ mod tests {
     #[test]
     fn failed_backup_leaves_nothing_behind() {
         let dir = tempfile::TempDir::new().unwrap();
-        let bak = dir.path().join("settings.json.agentmail.bak");
+        let bak = dir.path().join("settings.json.agent-communication.bak");
         let err = write_backup(&bak, None, |f| {
             f.write_all(b"{\"partial")?;
             Err(std::io::Error::other("disk full"))

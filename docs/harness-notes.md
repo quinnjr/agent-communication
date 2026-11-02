@@ -1,6 +1,6 @@
 # Harness notes
 
-Observed harness behaviour that agentmail depends on, with how it was checked.
+Observed harness behaviour that agent-communication depends on, with how it was checked.
 
 ## Session ids (Task 3)
 
@@ -10,7 +10,7 @@ model credentials that an isolated config does not have).
 - **opencode 2.0.27.** The MCP client sends the session on every tool call:
   `client.callTool({name, arguments, _meta: {"ai.opencode/sessionID": sessionID}})`,
   omitting `_meta` when the call has no session. Shell commands get
-  `OPENCODE_SESSION_ID=<sessionID>` in their environment. agentmail's MCP
+  `OPENCODE_SESSION_ID=<sessionID>` in their environment. agent-communication's MCP
   server resolves each call by that `_meta` key, and the CLI by the variable.
 - **kiro-cli 2.32.0, V3 engine (KAS).** The engine is a Node bundle,
   `~/.local/share/kiro-cli/kas/<version>/node_modules/@kiro/agent/dist/server/acp-server.js`.
@@ -21,7 +21,7 @@ model credentials that an isolated config does not have).
     commands (`env: Are(rootConversationId)`).
   - Where it is not: MCP servers. Their `StdioClientTransport` gets the
     default environment plus the server's configured `env`, nothing more,
-    so agentmail's MCP server under kiro registers by process alone, with
+    so agent-communication's MCP server under kiro registers by process alone, with
     no session.
   - Its value is the **root** conversation id (`rootConversationId`), which
     every subagent conversation of that root shares. So a subagent's shell
@@ -71,7 +71,7 @@ model credentials that an isolated config does not have).
 - **Shared opencode MCP server.** A tool call without an opencode
   session in `_meta` (opencode omits it when the call has no session)
   cannot `register` on a server started by opencode, so the shared server
-  never caches an address. Likewise `agentmail register` bound to an
+  never caches an address. Likewise `agent-communication register` bound to an
   opencode process without an opencode session is refused: no
   `OPENCODE_SESSION_ID`, or only another harness's session (a kiro shell
   running `register --pid <opencode pid>`). Only `--pid` naming a process
@@ -86,20 +86,20 @@ model credentials that an isolated config does not have).
 - **Harness at PID 1: session-only agents.** A harness ancestor at PID 1
   (opencode as a container's entry point) cannot be bound to, and the CLI
   then binds nothing rather than falling back to the grandparent, so
-  `agentmail register` (however deep its chain: opencode -> bash -> make ->
-  sh -> agentmail) and the MCP server (whose parent is the harness) agree:
+  `agent-communication register` (however deep its chain: opencode -> bash -> make ->
+  sh -> agent-communication) and the MCP server (whose parent is the harness) agree:
   the session's agent carries no process. Falling back would bind a
   transient process in between, which would mark the agent Gone when it
   exits and be replaced by a different one on the next register. Presence
   is unchanged: an agent without a bound process is never Active, so mail
   addressed to it by name is held until a bound registration claims it;
   callers in that session act as it through its session (MCP `_meta`,
-  `OPENCODE_SESSION_ID`) or `AGENTMAIL_ADDRESS`. Pinned by
+  `OPENCODE_SESSION_ID`) or `AGENT_COMMUNICATION_ADDRESS`. Pinned by
   `identity_cli_session_register_under_pid_1_opencode_is_unbound`.
 - **opencode MCP server behind a wrapper.** When opencode starts the
-  server through a wrapper (opencode -> `sh -c` -> agentmail mcp), the
+  server through a wrapper (opencode -> `sh -c` -> agent-communication mcp), the
   server's parent is the wrapper, but a session `register` over MCP binds
-  the opencode process above it, the same process `agentmail register`
+  the opencode process above it, the same process `agent-communication register`
   from that session's shell binds. Otherwise the session's bound process
   would flip between the wrapper and opencode depending on which path
   registered last, and presence would follow the wrapper's lifetime. This
@@ -107,23 +107,23 @@ model credentials that an isolated config does not have).
   is refused.
 - **Claude Code: no harness redirect (a deliberate trade-off).** The plan
   says an explicit pid (the MCP server's parent) should prefer the nearest
-  harness ancestor. agentmail applies that only for kiro and opencode.
+  harness ancestor. agent-communication applies that only for kiro and opencode.
   Under Claude Code the parent is bound exactly. This was not driven by a
   spike: it guards a case that follows from the process model, an unknown
   MCP client (an inspector, another agent tool) run from Claude Code's bash
-  tool, whose `agentmail mcp` would otherwise bind Claude Code itself and
+  tool, whose `agent-communication mcp` would otherwise bind Claude Code itself and
   take over the agent Claude Code registered. The cost is the wrapper case:
   a Claude Code config that starts the server through a wrapper that stays
-  its parent (`sh -c 'agentmail mcp'`, no `exec`) binds the wrapper, so
+  its parent (`sh -c 'agent-communication mcp'`, no `exec`) binds the wrapper, so
   Claude Code's shell commands and hooks, which resolve by ancestry (bash ->
   claude), do not find that agent. Claude Code runs a configured stdio
-  command directly, so a plain `agentmail mcp` config (or a wrapper that
+  command directly, so a plain `agent-communication mcp` config (or a wrapper that
   `exec`s it) is unaffected. Pinned by the test
   `claude_code_wrapper_binds_the_wrapper`.
 - **MCP clients run from a harness shell (kiro, opencode).** Another MCP
-  client with agentmail configured (codex, gemini-cli, an MCP inspector)
+  client with agent-communication configured (codex, gemini-cli, an MCP inspector)
   can be started from kiro's shell tool or opencode's bash tool. Its
-  `agentmail mcp` has a non-harness parent with kiro-cli or opencode above
+  `agent-communication mcp` has a non-harness parent with kiro-cli or opencode above
   it, exactly like the server kiro's engine or an opencode wrapper starts.
   Redirected to the harness, it would do harm: under kiro it binds
   kiro-cli and, on `register`, displaces the agent kiro's own server bound
@@ -177,8 +177,8 @@ model credentials that an isolated config does not have).
   ancestor (the shell, `$$`) is redirected to the opencode process above it,
   and so refused without a session like any other sessionless opencode
   registration. Only a process outside that opencode gets past it.
-- **Resolution order** in the CLI: `--as human`, `AGENTMAIL_ADDRESS`,
-  `AGENTMAIL_HUMAN=1`, `OPENCODE_SESSION_ID` (checked as above), then
+- **Resolution order** in the CLI: `--as human`, `AGENT_COMMUNICATION_ADDRESS`,
+  `AGENT_COMMUNICATION_HUMAN=1`, `OPENCODE_SESSION_ID` (checked as above), then
   process ancestry. Hooks differ: see "Hook identity" below.
 
 ## Claude Code hooks (Task 4)
@@ -201,11 +201,11 @@ come from the binary's bundled settings schema.
   system reminder `Stop hook blocking error from command "Stop": <stderr>`;
   the terminal shows "Stop hook feedback". The Stop hook of that woken turn
   gets `"stop_hook_active": true`. The `rewakeMessage`/`rewakeSummary` keys
-  exist but are marked `@internal`; agentmail does not use them.
+  exist but are marked `@internal`; agent-communication does not use them.
 - **`claude -p` runs `asyncRewake` hooks synchronously** (the binary gates
   backgrounding on an interactive session or streaming input). Observed: a
   `-p` run waited the hook's 12 s out, then took a second turn for its exit
-  2. So `agentmail hook wait` does nothing unless `CLAUDE_CODE_ENTRYPOINT`
+  2. So `agent-communication hook wait` does nothing unless `CLAUDE_CODE_ENTRYPOINT`
   is unset or `cli` (the interactive UI; `-p` sets `sdk-cli`): waiting
   would hold every headless run open until mail came.
 - **Limitation: idle wake works only in the terminal UI.** The binary
@@ -232,8 +232,8 @@ come from the binary's bundled settings schema.
   `UserPromptSubmit` alone runs under a 30 s limit (constant `30000`),
   which matches what was observed: a hook with no `timeout` there was
   killed after about 30 s (both interactive and `-p`), and the prompt went
-  ahead. So for the events agentmail uses: 600 s for all but
-  `UserPromptSubmit` (30 s), whatever the hook's own `timeout`. agentmail sets
+  ahead. So for the events agent-communication uses: 600 s for all but
+  `UserPromptSubmit` (30 s), whatever the hook's own `timeout`. agent-communication sets
   `timeout` on every hook: 10 for the quick ones, 86400 (a day) for the
   wait hook, observed to be accepted and to stay alive past the shorter
   waits. Node timers overflow above 2^31-1 ms (about 24.8 days), so
@@ -270,7 +270,7 @@ come from the binary's bundled settings schema.
   fired for it. Its hook output takes `hookSpecificOutput.hookEventName:
   "PostToolUseFailure"` with `additionalContext` (bundled schema). Without
   it, a run of failing tool calls would get no reminder and no urgent
-  push, and would not mark the session busy. agentmail runs the same
+  push, and would not mark the session busy. agent-communication runs the same
   `hook post-tool` for both events and names the event in its output after
   the payload's `hook_event_name`.
 - **Subagents.** Checked live with `-p` (the main agent started one
@@ -279,10 +279,10 @@ come from the binary's bundled settings schema.
   under the same `claude` process) with `"agent_id"` and `"agent_type"`
   added; the main agent's own `PostToolUse` for the `Agent` tool call had
   neither. The subagent fired no `UserPromptSubmit` or `Stop`; its end
-  runs `SubagentStop` (with `agent_id`), which agentmail does not hook.
+  runs `SubagentStop` (with `agent_id`), which agent-communication does not hook.
   The binary adds `agent_id` to every hook's base input when the hook runs
   in a subagent's context. So by ancestry alone a subagent's hooks act as
-  the agent. agentmail's hooks check `agent_id`: when it is non-empty,
+  the agent. agent-communication's hooks check `agent_id`: when it is non-empty,
   every hook does nothing and prints nothing. Urgent mail is then not
   marked surfaced, so the main agent's next tool call still gets it in
   full, and the subagent is never told "you are <address>". If a payload
@@ -301,14 +301,14 @@ come from the binary's bundled settings schema.
   and the subagent ran on undisturbed. So the main session is idle while
   a background subagent works, and subagent hooks must not mark it busy:
   if they did, the subagent's first tool call would end the idle wait and
-  mail arriving meanwhile would wait for the subagent to finish. agentmail
+  mail arriving meanwhile would wait for the subagent to finish. agent-communication
   marks the session busy only from main-agent events (`session-start`,
   `prompt`, `post-tool` without `agent_id`). A foreground subagent runs
   inside a turn whose `UserPromptSubmit` already marked it busy, so it
   needs no mark of its own.
-- **End to end with agentmail itself** (debug build, private data dir):
+- **End to end with agent-communication itself** (debug build, private data dir):
   hooks installed as below, the agent registered with `register --pid
-  <claude pid>`, the session left idle; `agentmail --as human send` woke it
+  <claude pid>`, the session left idle; `agent-communication --as human send` woke it
   within seconds with the reminder. The woken model did not read its mail
   and stopped again; the next wait hook (`stop_hook_active: true`) kept
   waiting instead of waking it again for the same mail. After `/exit` no
@@ -328,10 +328,10 @@ come from the binary's bundled settings schema.
   so the wake did not count as a hook continuation. Fired between turns
   (idle), the same hook started a new turn, as above, and that turn also
   ran `UserPromptSubmit` with the notification as its prompt. Harmful for
-  agentmail: the busy turn's one wake is spent as a confusing "Stop hook
+  agent-communication: the busy turn's one wake is spent as a confusing "Stop hook
   blocking error" mid-turn, and a long-lived wait keeps the lock so later
   Stops' waits skip. Hence the busy marking below. Rerun end to end with
-  the agentmail hooks (debug build, isolated daemon): the wait exited 0
+  the agent-communication hooks (debug build, isolated daemon): the wait exited 0
   about 0.1 s after the next prompt; mail sent during that turn's tool
   call caused no injection; the turn's Stop started a plain wait that woke
   the session at once for the unread mail; the woken turn's wait
@@ -353,7 +353,7 @@ Hook configuration (`settings.json`), as Task 5 installs it:
 }}
 ```
 
-How `agentmail hook wait` behaves under it:
+How `agent-communication hook wait` behaves under it:
 
 - It waits only for an agent registered with `wake`, and only for an idle
   session. Every Stop starts one, and the newest replaces the one before
@@ -423,7 +423,7 @@ How `agentmail hook wait` behaves under it:
   status re-read checks it), when the agent signs off, when the daemon
   stops, when a process it runs under (Claude Code) exits, or when the
   agent is gone because its Claude Code process was registered as another
-  agent (`agentmail register --pid`): the daemon then publishes the
+  agent (`agent-communication register --pid`): the daemon then publishes the
   unbound agent as gone, and a status re-read that names another agent
   also ends the wait, so it never wakes the session with the other
   agent's mail; it checks the processes and the turn file every 0.5 s and
@@ -432,7 +432,7 @@ How `agentmail hook wait` behaves under it:
   binary) exits 0 and prints nothing (the usage error only when stderr is
   a terminal, for a person running it by hand), so it never blocks a stop
   and never shows up in a harness. A hook run with `--as human` is the
-  human, like `AGENTMAIL_HUMAN=1`: it exits 0 with nothing to say, which
+  human, like `AGENT_COMMUNICATION_HUMAN=1`: it exits 0 with nothing to say, which
   is no output, except for opencode's plugin, which gets the same answer
   as for a session without an agent (`{}` for `status` and `signoff`,
   `{"gone":true}` for `wait`) (`--as` accepts no other value; any other is
@@ -461,7 +461,7 @@ How `agentmail hook wait` behaves under it:
 
 ### Install (Task 5)
 
-`agentmail install --harness claude-code` writes the hook set above into
+`agent-communication install --harness claude-code` writes the hook set above into
 `settings.json` and the MCP server into the user's `.claude.json`.
 Checked live against Claude Code 2.1.311 in a throwaway
 `CLAUDE_CONFIG_DIR` and `HOME`, with `claude mcp list` / `claude mcp get`
@@ -471,29 +471,29 @@ Checked live against Claude Code 2.1.311 in a throwaway
   when `CLAUDE_CONFIG_DIR` is set, else in `~/.claude.json`: with both a
   `$CLAUDE_CONFIG_DIR/.claude.json` and a `~/.claude.json`, only the
   first one's server was listed, and without the variable only the
-  second's. After `agentmail install` the server showed as `agentmail:
+  second's. After `agent-communication install` the server showed as `agent-communication:
   <bin> mcp - Connected`, scope "User config".
 - **Project-scope servers (`.mcp.json`) wait for approval**: `claude mcp
   list` shows them as "Pending approval (run `claude` to approve)" until
   the user approves them in an interactive session. `install --project`
   says so.
 - Claude Code rewrites `.claude.json` itself, often, with a two-space
-  indent. Install therefore changes only agentmail's entries and keeps
+  indent. Install therefore changes only agent-communication's entries and keeps
   every other byte of the file (layout, key order, number spellings), and
   checks just before writing that the file still has the text it planned
   from; if Claude Code wrote it in between, nothing is written and the
   command asks to be run again.
-- Hooks are recognised as agentmail's by their command: a program whose
-  file name starts with `agentmail`, or the installing binary itself
+- Hooks are recognised as agent-communication's by their command: a program whose
+  file name starts with `agent-communication`, or the installing binary itself
   (same path, or the same file once symlinks are resolved) whatever it is
   called, run with `hook` as its first argument (the binary path is
   shell-quoted when it needs to be). Install refuses to write a hook it
   would not recognise. A renamed binary's entries are found only by that
-  same binary (or one named `agentmail…`). Reinstalling from
+  same binary (or one named `agent-communication…`). Reinstalling from
   another path replaces the old entries, including ones on events this
   version no longer uses, and uninstall removes every one of them, keeping
   other hooks that share a group with them.
-- Install updates agentmail's entries in place rather than replacing
+- Install updates agent-communication's entries in place rather than replacing
   them: on the MCP server it sets only `type`, `command` and `args`
   (keeping, say, the user's `env`), on each of its hooks only `type`,
   `command`, `timeout`, `async` and `asyncRewake`, and a hook stays in its
@@ -501,25 +501,25 @@ Checked live against Claude Code 2.1.311 in a throwaway
   survives a reinstall. A missing hook joins the group of its sibling (the
   Stop group holds `stop` and `wait`), else gets a group of its own.
 - Uninstall restores an equivalent file. A container (`hooks`, an event's
-  list, `mcpServers`) that agentmail's entries emptied is removed only
-  when the file had no such key before agentmail (a `"hooks": {}` that was
-  there stays). "Before agentmail" is the backup when there is one (with
-  agentmail's entries taken out), else the file as it is.
+  list, `mcpServers`) that agent-communication's entries emptied is removed only
+  when the file had no such key before agent-communication (a `"hooks": {}` that was
+  there stays). "Before agent-communication" is the backup when there is one (with
+  agent-communication's entries taken out), else the file as it is.
 - That record is taken anew by an install into a file holding none of
-  agentmail's entries (after an uninstall, say): the backup is replaced by
-  the file as it is now and a `.agentmail.created` marker left from an
+  agent-communication's entries (after an uninstall, say): the backup is replaced by
+  the file as it is now and a `.agent-communication.created` marker left from an
   earlier install is removed (for a missing file, a stale backup is removed
   and the marker written afresh). Without this, a second uninstall was
   judged against the first-ever original and removed a `"hooks": {}` or
   `"mcpServers": {}` the user added between the two installs.
 - Creation is recorded, never inferred: when install creates a file it
-  first writes `<file>.agentmail.created`, listing the directories it
+  first writes `<file>.agent-communication.created`, listing the directories it
   creates for the file (`.claude/` in a project, `~/.claude/` or
   `$CLAUDE_CONFIG_DIR`). An uninstall that empties such a file deletes it
   with its backup and marker, then those directories once empty. A
-  reinstall into a file agentmail created writes no backup (there was no
+  reinstall into a file agent-communication created writes no backup (there was no
   original), so the file says "updated" with no "original kept as". Any other
-  file is kept, even one that held only agentmail's entries (one added by
+  file is kept, even one that held only agent-communication's entries (one added by
   hand with `claude mcp add`, say): it is left as `{}` and its backup
   stays.
 - New files are created with mode 0600: Claude Code keeps `.claude.json`
@@ -532,7 +532,7 @@ Checked live against Claude Code 2.1.311 in a throwaway
 - A file using CRLF line endings keeps them: new lines use the file's own
   ending, so install then uninstall gives back the same bytes.
 - A backup is written to a temporary file and hard-linked into place, so
-  a failed write never leaves a partial `<file>.agentmail.bak` (which
+  a failed write never leaves a partial `<file>.agent-communication.bak` (which
   would stop the real original from ever being saved).
 - There is no `--set-default`: the plan gave it a job only in the kiro
   agent-file fallback, and spike (a) showed a standalone hooks file works
@@ -543,11 +543,11 @@ Checked live against Claude Code 2.1.311 in a throwaway
 Hooks resolve their agent by `--session <id>` (opencode's plugin) or else
 by the hook's process ancestry, cut at the harness process (`CLAUDE_PID`
 for Claude Code, else the nearest harness ancestor). Unlike the CLI they
-never use `AGENTMAIL_ADDRESS`: a registered agent's shell may export it,
+never use `AGENT_COMMUNICATION_ADDRESS`: a registered agent's shell may export it,
 and a `claude` started from that shell would inherit it, so its hooks
 would wake for and surface the outer agent's mail, the very case the
 `CLAUDE_PID` cut exists for. On opencode the variable on the server
-process would override `--session` for every session. `AGENTMAIL_HUMAN=1`
+process would override `--session` for every session. `AGENT_COMMUNICATION_HUMAN=1`
 still silences a hook, and so does `--as human`. Tests bind their agent to the test process's parent
 (in the hook's ancestry) instead.
 
@@ -586,21 +586,21 @@ shows the pattern):
 - `JsonFile::read(path, entry)`: the file as a JSON object (missing or
   blank: empty), refusing other text with a message that shows `entry`
   (what to add by hand). It also records the file as it was before
-  agentmail (its backup, else its current value).
-- Edit a copy of `.value`, touching only agentmail's entries;
+  agent-communication (its backup, else its current value).
+- Edit a copy of `.value`, touching only agent-communication's entries;
   `object_at(root, key, path)` gets or creates a nested object and
   refuses a non-object.
 - `JsonFile::change(new, uninstall, strip)` turns it into a `Change`
-  (`None` when nothing changes). `strip` removes agentmail's entries from
-  an object and nothing else; with it, containers agentmail emptied are
-  removed unless they were there before agentmail, and an uninstall
-  deletes the file only when agentmail created it, which `apply` records
-  in `<file>.agentmail.created` (`created_marker_path`). kiro's hooks
+  (`None` when nothing changes). `strip` removes agent-communication's entries from
+  an object and nothing else; with it, containers agent-communication emptied are
+  removed unless they were there before agent-communication, and an uninstall
+  deletes the file only when agent-communication created it, which `apply` records
+  in `<file>.agent-communication.created` (`created_marker_path`). kiro's hooks
   file is the exception: one left with no hooks is removed (its schema
   rejects an empty list), its text kept in the backup.
-- Ownership: `is_agentmail_hook(cmd)` (program named `agentmail…` run
+- Ownership: `is_agent-communication_hook(cmd)` (program named `agent-communication…` run
   with `hook`) and `owns_hook(cmd, bin)` (that, or the program is `bin`
-  itself); MCP servers are owned by their key `agentmail`.
+  itself); MCP servers are owned by their key `agent-communication`.
 - `json::render(orig, new)` writes `new` over the original text, keeping
   every untouched byte (layout, key order, number spellings);
   `json::pretty` for snippets. `bin_str(o)` is the absolute UTF-8 binary
@@ -649,10 +649,10 @@ bundle (the `fromPromise` adapter that wraps a `{ id, setup }` module).
   `result.content` (an array of `{type: "text", text}` parts), so pushing a
   text part there reaches the model (it repeated the appended line
   verbatim). `output` is tool-specific (an object for `shell`), so
-  agentmail appends to `content` only. A failed call has `status:
+  agent-communication appends to `content` only. A failed call has `status:
   "error"` and `error`, no `result`: nothing can be appended, and the
   plugin only steers urgent mail for it. The hook is awaited before the
-  result goes back to the model, so its cost (one `agentmail hook status`,
+  result goes back to the model, so its cost (one `agent-communication hook status`,
   a few ms) is added to every tool call. With opencode's "code mode" the
   model's tools run inside an `execute` tool: `execute.after` fires for
   each tool called from the code and for `execute` itself.
@@ -689,23 +689,23 @@ bundle (the `fromPromise` adapter that wraps a `{ id, setup }` module).
   hooks are `prompt`, `title`, `retry`, `model.request`, `http.request`,
   `http.response` and three `experimental.ws.*`). `prompt` could append to
   the human's prompt text, but that text is stored and shown as the human's
-  own message, so agentmail does not touch it. On opencode the agent learns
+  own message, so agent-communication does not touch it. On opencode the agent learns
   who it is from the MCP server's instructions and from `register`, and is
   reminded of mail after its first tool call.
 
-How the plugin (`plugin/agentmail.js`) behaves, built on that:
+How the plugin (`plugin/agent-communication.js`) behaves, built on that:
 
-- It runs `agentmail hook status --harness opencode --session <id>
+- It runs `agent-communication hook status --harness opencode --session <id>
   [--surface-urgent]`, which prints the agent's `HookStatus` plus a
   `text` object (`guidance`, `reminder`, `urgent`, `questions`; `null`
   when there is nothing), or `{}` for a session without an agent or with
   the daemon down (and never starts the daemon). Rendering stays in Rust,
   shared with the other harnesses.
 - After each tool call (`--surface-urgent`): urgent mail goes into the
-  running turn with `synthetic` `steer` (once: agentmail marks it surfaced),
+  running turn with `synthetic` `steer` (once: agent-communication marks it surfaced),
   else, with unread mail, the reminder is appended to the tool result. When
   the steer fails (the session ended meanwhile), the urgent text is
-  appended to the tool result instead, with the reminder, since agentmail
+  appended to the tool result instead, with the reminder, since agent-communication
   will not report that mail as urgent again. A failed tool call (status
   `error`) has no result to append to: its urgent text is kept by the
   plugin and pushed after the next tool call, or, if the turn ends first,
@@ -728,7 +728,7 @@ How the plugin (`plugin/agentmail.js`) behaves, built on that:
   session.
 - While a session is idle (after `execution.succeeded`, `failed` or
   `interrupted`) and its agent has `wake` on, one waiter per session runs
-  `agentmail hook wait --harness opencode --session <id> --timeout 300`,
+  `agent-communication hook wait --harness opencode --session <id> --timeout 300`,
   the same `Daemon::wait` Claude Code's wait hook uses (one waiter per
   agent, wake once per message). Its stdin says which unread mail counts
   as already there, by how the turn that just ended started:
@@ -748,7 +748,7 @@ How the plugin (`plugin/agentmail.js`) behaves, built on that:
   - a turn the plugin queued for a wake (or for a dropped wake's
     reminder, or urgent mail) that succeeded: `{"stop_hook_active":
     false, "after_wake": true}`. The
-    mail agentmail last woke the session for (its `woken` file) is
+    mail agent-communication last woke the session for (its `woken` file) is
     already there; anything else wakes it, so mail that came during the
     turn, after its last tool call, is not lost. This is what a woken
     Claude Code turn's Stop gets too (`stop_hook_active` false, `known`
@@ -768,7 +768,7 @@ How the plugin (`plugin/agentmail.js`) behaves, built on that:
   unusable) or `{"gone":true}` (signed off, gone, no agent, daemon down,
   opencode exited). On mail the plugin queues the reminder with `resume:
   true`, which starts a turn. When that fails (or the answer has no text)
-  the waiter does not stop: agentmail has recorded the mail as woken, so a
+  the waiter does not stop: agent-communication has recorded the mail as woken, so a
   later plain wait would not wake for it. It waits on for new mail only
   (`stop_hook_active: true`), with a short timeout (5 s, doubling per
   failure up to 300 s), and after each timeout queues the reminder of a
@@ -802,35 +802,35 @@ How the plugin (`plugin/agentmail.js`) behaves, built on that:
 - The waiter starts lazily, at the first end of turn whose status shows the
   agent registered with `wake`. After opencode restarts, a session that
   was idle when it went down is not waited on until its next turn ends.
-- `session.deleted` stops the waiter and runs `agentmail hook signoff
+- `session.deleted` stops the waiter and runs `agent-communication hook signoff
   --harness opencode --session <id>`. Like every hook it never starts the
-  daemon (plain `agentmail signoff` would, through the CLI's
+  daemon (plain `agent-communication signoff` would, through the CLI's
   connect-or-spawn), and it acts only as the agent registered for that
   session (`Caller::Session`), never by process ancestry, so it cannot
   sign off an outer agent (the Claude Code session whose shell started
   opencode) when the session has none. It prints `{"signed_off":true,
   "address":...}`, or `{}` for a session without an agent or with the
   daemon down.
-- `AGENTMAIL_ADDRESS` and `AGENTMAIL_HUMAN` are removed from the
-  environment of every agentmail command the plugin runs: opencode may
+- `AGENT_COMMUNICATION_ADDRESS` and `AGENT_COMMUNICATION_HUMAN` are removed from the
+  environment of every agent-communication command the plugin runs: opencode may
   have inherited them from the shell that started it. The hooks never read
-  `AGENTMAIL_ADDRESS`, but it is removed anyway so no agentmail command
-  the plugin runs can act as that address. `AGENTMAIL_HUMAN=1` (how the
+  `AGENT_COMMUNICATION_ADDRESS`, but it is removed anyway so no agent-communication command
+  the plugin runs can act as that address. `AGENT_COMMUNICATION_HUMAN=1` (how the
   human identifies in their own shell) makes every hook act as the human
   and say nothing (`{}`, `{"gone":true}`): inherited, it would silently
   turn the plugin off for every session, and sessions would never be
   signed off on delete.
 - The plugin's cleanup kills every waiter and stops its event stream.
 - The installed file has the binary's absolute path in place of the
-  `__AGENTMAIL_BIN__` placeholder; uninstalled (the placeholder left as is,
-  as in the unit tests) it runs `agentmail` from `PATH`.
+  `__AGENT_COMMUNICATION_BIN__` placeholder; uninstalled (the placeholder left as is,
+  as in the unit tests) it runs `agent-communication` from `PATH`.
 
-End to end with the real plugin and agentmail (debug build, private data
+End to end with the real plugin and agent-communication (debug build, private data
 dir, socket under `/run/user/1000` because the scratch path exceeded the
 socket path limit), `opencode serve` plus `opencode run --server`:
 
 - The model registered over MCP; when the turn ended the plugin started a
-  `hook wait` for the session. `agentmail --as human send` woke the idle
+  `hook wait` for the session. `agent-communication --as human send` woke the idle
   session within the same second (the reminder was enqueued, and the turn
   started), and the model read the mail and
   replied with the `reply` tool.
@@ -842,8 +842,8 @@ socket path limit), `opencode serve` plus `opencode run --server`:
 
 ### Install (Task 7)
 
-`agentmail install --harness opencode` writes the MCP server into
-`opencode.json` and the plugin into `plugins/agentmail.js`. Checked live
+`agent-communication install --harness opencode` writes the MCP server into
+`opencode.json` and the plugin into `plugins/agent-communication.js`. Checked live
 against opencode 2.0.27 with private `HOME` and `XDG_*` directories and
 the background service moved to a private port (`opencode service set
 port`, which writes `service.json` in the private config dir); `opencode
@@ -865,23 +865,23 @@ them all.
   `~/.config/opencode`. opencode loads and merges both `opencode.json`
   and `opencode.jsonc` there (`opencode debug config` lists both, the
   `.jsonc` loaded last, so its entries override). So install updates
-  agentmail's entry in each file that has one, else adds it to the first
+  agent-communication's entry in each file that has one, else adds it to the first
   of the two that exists (a new `opencode.json` when neither does), and
   uninstall removes it from both. Plugins are
   loaded from `plugin/` and `plugins/` next to it, `.js` and `.ts` files
-  only, so the `.agentmail.bak` and `.agentmail.created` files there are
+  only, so the `.agent-communication.bak` and `.agent-communication.created` files there are
   never loaded. `--project`: `./opencode.json` (or `./opencode.jsonc`) and
-  `./.opencode/plugins/agentmail.js`. At project scope opencode also
+  `./.opencode/plugins/agent-communication.js`. At project scope opencode also
   merges `./.opencode/opencode.json` and `./.opencode/opencode.jsonc`,
   after the direct files (checked with `opencode debug config` in a
   project holding all four: the direct `opencode.json`, then
   `.opencode/opencode.json`, then `.opencode/opencode.jsonc`), so an
-  agentmail entry there overrides the one install writes. Install
-  therefore updates an agentmail entry found in those too (with the same
+  agent-communication entry there overrides the one install writes. Install
+  therefore updates an agent-communication entry found in those too (with the same
   JSONC refusal), and uninstall removes it from them; a new entry still
   goes only into the first existing direct file (`./opencode.json` when
   there is none).
-- **The entry**: `mcp.servers.agentmail = {"type": "local", "command":
+- **The entry**: `mcp.servers.agent-communication = {"type": "local", "command":
   [<bin>, "mcp"], "codemode": false}`. A reinstall sets only `type`,
   `command` and `codemode`, keeping keys the user added (`environment`,
   `disabled`, ...).
@@ -891,10 +891,10 @@ them all.
   written there is silently dropped (seen in `opencode debug config`;
   `enabled: false` becomes `disabled: true`). A file mixing both shapes
   is read fine (V1 entries and `servers` merged), and opencode's own
-  `opencode mcp add` writes `servers` into a V1 file. So agentmail always
-  writes `mcp.servers.agentmail`, leaving the user's V1 entries exactly as
+  `opencode mcp add` writes `servers` into a V1 file. So agent-communication always
+  writes `mcp.servers.agent-communication`, leaving the user's V1 entries exactly as
   written, instead of the plan's "same shape", which would lose
-  `codemode: false`. A V1 entry named `agentmail` counts as agentmail's:
+  `codemode: false`. A V1 entry named `agent-communication` counts as agent-communication's:
   install moves it to `servers` (carrying `environment`, `cwd`,
   `timeout`, `protocol`, and `enabled: false` as `disabled: true`; when a
   `servers` entry is already there, only those it lacks) and uninstall
@@ -903,62 +903,62 @@ them all.
   `/* */` comments or trailing commas (outside strings) is never
   rewritten, since they would be lost. If it already is as the
   command would leave it (the entry pasted by hand, or for uninstall no
-  agentmail entry), it is left alone and the plugin is still installed or
+  agent-communication entry), it is left alone and the plugin is still installed or
   removed; otherwise nothing at all is changed and the error shows the
   exact entry to paste (install; also telling to delete a V1
-  `mcp.agentmail` when there is one) or says what to delete by hand
+  `mcp.agent-communication` when there is one) or says what to delete by hand
   (uninstall), then to run the command again (to add or remove the
   plugin; opencode picks up the hand edit by itself). With several
   files, any one refusing changes nothing in any.
-- **The plugin** is `plugin/agentmail.js` embedded in the binary with its
-  one `"__AGENTMAIL_BIN__"` literal replaced by the binary's path as a
+- **The plugin** is `plugin/agent-communication.js` embedded in the binary with its
+  one `"__AGENT_COMMUNICATION_BIN__"` literal replaced by the binary's path as a
   JSON string (quotes and backslashes escaped). A file at
-  `plugins/agentmail.js` counts as agentmail's when it starts with the
-  plugin's first line (`// agentmail for opencode`); any other file there
+  `plugins/agent-communication.js` counts as agent-communication's when it starts with the
+  plugin's first line (`// agent-communication for opencode`); any other file there
   is refused by install and left alone by uninstall. Install rewrites an
-  older agentmail plugin (a new binary path or version); uninstall
-  deletes it, and the `plugins/` (and config) directories when agentmail
-  created them and they are empty. When agentmail did not create the
-  plugin (no `.agentmail.created`) and its `.agentmail.bak` is not
-  agentmail's plugin, uninstall puts that backup back instead. A plugin
+  older agent-communication plugin (a new binary path or version); uninstall
+  deletes it, and the `plugins/` (and config) directories when agent-communication
+  created them and they are empty. When agent-communication did not create the
+  plugin (no `.agent-communication.created`) and its `.agent-communication.bak` is not
+  agent-communication's plugin, uninstall puts that backup back instead. A plugin
   file the user edited is never discarded. Install ends the plugin with
-  a digest line (`// agentmail-digest: fnv1a64:<hex>`, FNV-1a of the text
+  a digest line (`// agent-communication-digest: fnv1a64:<hex>`, FNV-1a of the text
   above it), so any version's plugin, as that version wrote it for any
   binary, is told from an edited one without a list of every plugin ever
   shipped; one without a matching digest counts as edited, and so is
   never lost: before install or uninstall replaces or deletes it, its text
-  is saved as its `.agentmail.bak` (or, when that backup already holds
-  something else to keep, the first free `.agentmail.bak.<n>`), and the
+  is saved as its `.agent-communication.bak` (or, when that backup already holds
+  something else to keep, the first free `.agent-communication.bak.<n>`), and the
   command prints where (`removed ... (edited copy kept as ...)`, a line
   after the diff with `--dry-run`, `saved` in `--json`). A backup holding
-  an edited agentmail plugin is kept by uninstall and by a new install;
-  one holding a plugin agentmail would write goes with the plugin. An
+  an edited agent-communication plugin is kept by uninstall and by a new install;
+  one holding a plugin agent-communication would write goes with the plugin. An
   upgrade over an untouched older plugin keeps no copy of it, and when
-  agentmail created the plugin no `.agentmail.bak` of its own earlier
+  agent-communication created the plugin no `.agent-communication.bak` of its own earlier
   text is written either (it had no original; this holds for every file
-  agentmail created), so upgrades leave no backups behind and uninstall
+  agent-communication created), so upgrades leave no backups behind and uninstall
   still removes `plugins/`. A symlink
-  at `plugins/agentmail.js` (a dev or dotfiles setup) is never written
+  at `plugins/agent-communication.js` (a dev or dotfiles setup) is never written
   through: install refuses it, and uninstall removes only the link,
   leaving the file it points to and any backup beside it, also when
-  agentmail created the plugin (its `.agentmail.created` is there) and
+  agent-communication created the plugin (its `.agent-communication.created` is there) and
   the user then swapped in the link.
-- **One agentmail plugin per opencode.** opencode loads the user scope's
+- **One agent-communication plugin per opencode.** opencode loads the user scope's
   `plugin/` and `plugins/`, then the project's `.opencode/plugin/` and
   `.opencode/plugins/`, in that order, but runs `setup()` for only one
   plugin per `id`, the first loaded; plugins with different ids all run.
   Checked live (opencode 2.0.27, private `HOME` and `XDG_*`, `opencode run
   --standalone --print-logs` in a project) with probe plugins whose
-  `setup()` writes a marker file: with an `id: "agentmail"` probe in all
+  `setup()` writes a marker file: with an `id: "agent-communication"` probe in all
   four dirs and an `id: "other"` one in the project's `plugins/`, the log
   has `loading plugin` for all five, but only the user `plugin/` copy's
   and the `other` probe's `setup()` ran; with only the two `plugins/`
   copies, only the user one ran; with only the project one, it ran. So
-  an agentmail plugin left at `plugin/agentmail.js` does not run twice:
-  it shadows the installed `plugins/agentmail.js`, which never runs, and
+  an agent-communication plugin left at `plugin/agent-communication.js` does not run twice:
+  it shadows the installed `plugins/agent-communication.js`, which never runs, and
   the install would silently do nothing. Install and uninstall therefore
   both remove it from the scope they work on (a file there that is not
-  agentmail's is left alone). A symlink there to an agentmail plugin is
+  agent-communication's is left alone). A symlink there to an agent-communication plugin is
   treated as at `plugins/`: it is the user's setup, so install refuses it
   (saying it shadows the installed plugin, and to remove the link and run
   the install again) rather than removing it, while uninstall removes
@@ -970,9 +970,9 @@ them all.
   it cannot read), so the project's plugin will not run; `install` at user
   scope when the current project's plugin runs another binary, so it
   stops running there; and `uninstall` at user scope when the current
-  project has an agentmail plugin, which then runs there. The notes are
+  project has an agent-communication plugin, which then runs there. The notes are
   advisory: a path in the other scope that cannot be read (a directory,
-  a file that is not UTF-8) counts as no agentmail plugin there and never
+  a file that is not UTF-8) counts as no agent-communication plugin there and never
   stops the command.
 - The rest (backups, creation markers, keeping the file's layout, symlinks,
   modes) is the shared install machinery described under Claude Code's
@@ -1001,12 +1001,12 @@ config schema and exit-code rules come from the engine bundle
   is in seconds, default 60; `0` means none. A workspace's
   `.kiro/hooks/*.json` is loaded too (seen live in a git repo, with `-a`;
   the engine runs hook commands only in a trusted workspace). The engine
-  watches `.kiro/hooks` and reloads. agentmail therefore needs no agent of
+  watches `.kiro/hooks` and reloads. agent-communication therefore needs no agent of
   its own and no default agent, and `install` has no `--set-default`.
 - **MCP.** `$KIRO_HOME/settings/mcp.json` (and a workspace's
-  `.kiro/settings/mcp.json`) `mcpServers.agentmail = {"command", "args"}`
+  `.kiro/settings/mcp.json`) `mcpServers.agent-communication = {"command", "args"}`
   is started by the V3 engine with the server's `env` added to kiro's own
-  environment; its tools appear as `@agentmail/<tool>` (loaded with
+  environment; its tools appear as `@agent-communication/<tool>` (loaded with
   `tool_load`).
 - **Output, by exit code** (bundle, then checked live): stdout of a
   `SessionStart` or `UserPromptSubmit` hook that exits 0 goes to the model
@@ -1017,7 +1017,7 @@ config schema and exit-code rules come from the engine bundle
   `{"decision": "block", "reason"}`, continues the turn with stderr (else
   stdout) as a `<HOOK_INSTRUCTION>`. `PostToolUse` output is ignored. A
   model may distrust text that looks injected, so the PreToolUse text
-  says plainly that agentmail held the call and that it can run again.
+  says plainly that agent-communication held the call and that it can run again.
 - **(b) Stop continuations: one per human prompt.** A turn that a Stop
   hook continued ends without running the Stop hooks again
   (`onAgentStopHooksExecuted`). Checked live with a Stop hook that always
@@ -1059,16 +1059,16 @@ config schema and exit-code rules come from the engine bundle
   is held, so waking on kiro is opt-in.** `install --harness kiro` writes
   the Stop hook without `--wake` (it only checks open questions, timeout
   10); `install --kiro-wake` writes `hook stop --harness kiro --wake` with
-  `timeout: 0` and gives the MCP server `AGENTMAIL_KIRO_WAKE=1`.
+  `timeout: 0` and gives the MCP server `AGENT_COMMUNICATION_KIRO_WAKE=1`.
   `register` (MCP and CLI) defaults `wake` to false for a kiro agent
   unless `--kiro-wake` is installed: the MCP server sees the variable
   and decides from its own environment alone (kiro started it with the
   `env` it settled on, so without the variable it is off, whatever the
   files say; it never reads them);
   kiro does not pass the server's `env` to its shell tool's commands, so
-  the CLI asks the source of truth instead: agentmail's MCP server (a
-  process `<agentmail> mcp`) among the descendants of the `kiro-cli` the
-  CLI runs under, reading `AGENTMAIL_KIRO_WAKE` from its
+  the CLI asks the source of truth instead: agent-communication's MCP server (a
+  process `<agent-communication> mcp`) among the descendants of the `kiro-cli` the
+  CLI runs under, reading `AGENT_COMMUNICATION_KIRO_WAKE` from its
   `/proc/<pid>/environ` (`1` there means on; a server without it means
   off, whatever the files say). Only kiro's own engine-started servers
   count: one with another harness process (a nested `kiro-cli`, `claude`
@@ -1084,14 +1084,14 @@ config schema and exit-code rules come from the engine bundle
   checked live, so the files could disagree with the server kiro started
   and a CLI `register` would then flip the agent's `wake`. Only when no
   such server runs (no `kiro-cli` above, with `--harness kiro`, or kiro
-  has not started it) does the CLI fall back to agentmail's server entry
+  has not started it) does the CLI fall back to agent-communication's server entry
   in the workspace's `.kiro/settings/mcp.json` (kiro's workspace: the
   working directory of the `kiro-cli` process, read from
   `/proc/<pid>/cwd`, so a command run in a subdirectory finds it; the
   CLI's own directory only without a `kiro-cli` above it; the
   workspace's entry is taken when it has one, trusted or not, since the
   trust is not known outside kiro), else the user's (`$KIRO_HOME`, else
-  `~/.kiro`), and takes `env.AGENTMAIL_KIRO_WAKE = "1"` there as the
+  `~/.kiro`), and takes `env.AGENT_COMMUNICATION_KIRO_WAKE = "1"` there as the
   install's choice.
   `wake: true` / `--wake` still turns it on.
   A Stop hook left running after Esc ends at the human's next prompt or
@@ -1123,38 +1123,38 @@ config schema and exit-code rules come from the engine bundle
   reaches `kiro-cli` (`node` -> `kiro-cli-chat` -> `kiro-cli`), where it
   is cut (`hook_procs` in `src/hook/mod.rs`): the agent the MCP server
   bound there is found.
-- **What agentmail installs** (`hooks/agentmail.json`, a file of its own;
+- **What agent-communication installs** (`hooks/agent-communication.json`, a file of its own;
   hooks recognised by their command, as for Claude Code):
-  `agentmail-session-start` (SessionStart) and `agentmail-prompt`
+  `agent-communication-session-start` (SessionStart) and `agent-communication-prompt`
   (UserPromptSubmit) print who the agent is and its reminder;
-  `agentmail-pre-tool` (PreToolUse, matcher `.*`: without a matcher kiro
+  `agent-communication-pre-tool` (PreToolUse, matcher `.*`: without a matcher kiro
   runs it too but logs a warning) blocks one tool call per urgent message
-  with the mail on stderr; `agentmail-stop` (Stop) exits 1 with the open
+  with the mail on stderr; `agent-communication-stop` (Stop) exits 1 with the open
   questions, else, with `--wake` and the agent's `wake` on, waits as
   Claude Code's wait hook does (`Daemon::wait`, no stop key) and exits 1
   with the reminder when mail comes. Timeouts: 10 s, and none (`0`) for
-  the waiting Stop hook. A reinstall updates agentmail's hooks in place,
+  the waiting Stop hook. A reinstall updates agent-communication's hooks in place,
   keeping keys the user added (`enabled`, `description`) and other hooks
   in the file; uninstall removes them, and the file itself when no hooks
   are left in it: kiro's schema (`{version: "v1", hooks: [..] (at least
   one)}`) rejects an empty list and `{}` alike, logging "Hook file does
-  not match v2 schema" on every load. A file agentmail did not create
-  keeps its text in `hooks/agentmail.json.agentmail.bak` (the backup
+  not match v2 schema" on every load. A file agent-communication did not create
+  keeps its text in `hooks/agent-communication.json.agent-communication.bak` (the backup
   already there from the install, which holds the file before
-  agentmail; else the text as it was at uninstall). `install` prints
-  `kiro-cli: agentmail supports the V3 engine only — run kiro-cli chat --v3`.
-  An uninstall leaves a hooks file without agentmail's hooks (an empty
+  agent-communication; else the text as it was at uninstall). `install` prints
+  `kiro-cli: agent-communication supports the V3 engine only — run kiro-cli chat --v3`.
+  An uninstall leaves a hooks file without agent-communication's hooks (an empty
   list, or only the user's) as it is.
 - **Both scopes at once.** kiro loads a trusted workspace's
-  `.kiro/hooks/` alongside the user's `hooks/`, so agentmail installed
+  `.kiro/hooks/` alongside the user's `hooks/`, so agent-communication installed
   at both scopes runs every hook twice: two reminders at session start
   and on each prompt, two `PreToolUse` hooks, and two Stop hooks. Two
   waiting Stop hooks share the `shown` file without a lock, so both can
   show the same open questions; with `--kiro-wake` at one scope only, that
   scope's waiting Stop hook runs beside the other's plain one, which
   ends the stop at once with any open questions. `install` therefore
-  notes when the other scope's `hooks/agentmail.json` already holds
-  agentmail's hooks, and names the `uninstall` that removes them. Install
+  notes when the other scope's `hooks/agent-communication.json` already holds
+  agent-communication's hooks, and names the `uninstall` that removes them. Install
   at one scope only.
 - **Subagents cannot be told apart.** Checked live (`--no-interactive`,
   the root told to use `invoke_sub_agent` for `echo sub-ok`): the
@@ -1169,7 +1169,7 @@ config schema and exit-code rules come from the engine bundle
   in `tests/fixtures/hooks/kiro/pre-tool-subagent.json` and
   `pre-tool-subagent-response.json`. Only the tool name
   `subagent_response` (a subagent's last call) is a subagent's alone, so
-  agentmail treats every tool hook as the root agent's. Consequences:
+  agent-communication treats every tool hook as the root agent's. Consequences:
   urgent mail that comes while a subagent runs is pushed at the
   subagent's next tool call and marked surfaced, so the root agent does
   not get it mid-run (it reaches the root only if the subagent passes it
@@ -1195,10 +1195,10 @@ config schema and exit-code rules come from the engine bundle
 
 Deviations from the plan, and why:
 
-- **Step order.** The plan has install run `agentmail daemon stop`, then
-  `systemctl --user daemon-reload` and `enable --now agentmail`. Install
+- **Step order.** The plan has install run `agent-communication daemon stop`, then
+  `systemctl --user daemon-reload` and `enable --now agent-communication`. Install
   instead runs `daemon-reload` and `enable --now` first, then
-  `try-restart agentmail` only when the service was already running
+  `try-restart agent-communication` only when the service was already running
   before (on the unit replaced, or on one removed by hand; enabling a
   running service does not restart it on the new unit, while a stopped
   one `enable --now` starts on it, so restarting that would only drop the
@@ -1217,7 +1217,7 @@ Deviations from the plan, and why:
   for as long as it runs. Both looks, and the `daemon stop`, use the
   service's own location, not the default one: the manager's
   `show-environment` with the unit's `Environment=` (drop-ins included,
-  `systemctl --user show -p Environment agentmail`) and
+  `systemctl --user show -p Environment agent-communication`) and
   `EnvironmentFile=`s over it, read again once the second look runs
   (systemd has then loaded the unit and its drop-ins). Otherwise a
   service given a data directory by a drop-in, docs/daemon.md's way, would
@@ -1246,41 +1246,41 @@ Deviations from the plan, and why:
   above) is still what install reads to note a service data directory or
   socket that differs from the shell's, since those come from the
   environment the service's daemon gets; the note names the variables
-  that differ, and `AGENTMAIL_DATA_DIR`/`AGENTMAIL_SOCKET` set in the
+  that differ, and `AGENT_COMMUNICATION_DATA_DIR`/`AGENT_COMMUNICATION_SOCKET` set in the
   shell are noted only when the service does not already get the same. Only the
   variables the location depends on (`HOME`, `XDG_RUNTIME_DIR`,
-  `XDG_DATA_HOME`, `AGENTMAIL_DATA_DIR`, `AGENTMAIL_SOCKET`) are read
+  `XDG_DATA_HOME`, `AGENT_COMMUNICATION_DATA_DIR`, `AGENT_COMMUNICATION_SOCKET`) are read
   from it: a quoted (`$'...'`) value of one of those skips the note, one
   of any other variable is ignored.
 - **Whose unit.** "Touches only what it owns" is applied to the unit as:
-  agentmail's own unit is the one it created (its marker), whatever its
+  agent-communication's own unit is the one it created (its marker), whatever its
   `ExecStart`, or the one it wrote over a unit of the user's kept as the
-  backup, recognised by an `ExecStart` path in the form agentmail writes
+  backup, recognised by an `ExecStart` path in the form agent-communication writes
   (absolute, `%` doubled, quoted only when needed). Every other unit is
   the user's, including docs/daemon.md's unit written by hand (`%h/...`): it
   is saved as the backup before install replaces it or uninstall removes
   it, and both refuse when the backup already keeps a different unit. A
-  hand-written unit identical to what agentmail would write for some
-  binary path is indistinguishable from agentmail's and is treated as
+  hand-written unit identical to what agent-communication would write for some
+  binary path is indistinguishable from agent-communication's and is treated as
   such: with a different unit already kept as the backup, it is replaced
   or removed without being saved (it holds nothing but that path).
 - **The user's settings live in a drop-in.** The README used to tell
-  users to add `Environment=` lines to `agentmail.service` itself; a later
+  users to add `Environment=` lines to `agent-communication.service` itself; a later
   install took that edited unit for the user's, kept it as the backup and
   wrote the plain unit, so the service silently moved back to the default
   data directory. Settings now go in a drop-in
-  (`systemctl --user edit agentmail`, saved as
-  `agentmail.service.d/override.conf`), which install and uninstall never
+  (`systemctl --user edit agent-communication`, saved as
+  `agent-communication.service.d/override.conf`), which install and uninstall never
   touch (uninstall notes it is left in place), and the location-override
   note prints the `Environment=` lines to put there. Install refuses,
-  changing nothing, to replace a unit agentmail created that was edited
+  changing nothing, to replace a unit agent-communication created that was edited
   beyond its `ExecStart`, showing the edits and how to move them to a
   drop-in; replacing a unit of the user's notes any settings it had that
-  agentmail's unit lacks.
+  agent-communication's unit lacks.
 - **When install restarts the service.** `try-restart` runs only when the
   service is already running (`is-active`) on something other than
-  agentmail's unit as install leaves it: the unit file changed, or, with
-  it unchanged, `systemctl --user show agentmail` (asked before the
+  agent-communication's unit as install leaves it: the unit file changed, or, with
+  it unchanged, `systemctl --user show agent-communication` (asked before the
   reload) reports `LoadState=not-found`, `NeedDaemonReload=yes`, a
   `FragmentPath` other than the unit's (compared with symlinks resolved),
   a loaded `ExecStart` whose `path=` is not this binary, or a main process
@@ -1299,17 +1299,17 @@ Deviations from the plan, and why:
   resolved `current_exe`. `%` is doubled and the path quoted only when it
   must be.
 - **Uninstall after the unit was removed by hand.** With the unit file
-  gone, uninstall cleans up only what is agentmail's: the running service
+  gone, uninstall cleans up only what is agent-communication's: the running service
   when systemd has no unit file for it any more or still loads it from
-  agentmail's removed unit, and the `default.target.wants` link when it
-  points to agentmail's unit (`disable` cannot, with the file gone, so
+  agent-communication's removed unit, and the `default.target.wants` link when it
+  points to agent-communication's unit (`disable` cannot, with the file gone, so
   the link is removed directly, then `daemon-reload`). Both compare paths
   with symlinks resolved in the unit's directory, as the unit search path
   check does, so a config directory reached through a symlink (HOME a
   link to another disk) is still recognised. A service loaded from
   elsewhere, and a link to it, are the user's and left alone with a note.
   Removing the unit by hand also means removing
-  `agentmail.service.agentmail.created`, agentmail's marker, which a later
+  `agent-communication.service.agent-communication.created`, agent-communication's marker, which a later
   install or uninstall trusts.
 
 ## Real-harness e2e (Task 10)
@@ -1320,10 +1320,10 @@ Deviations from the plan, and why:
 default model), each in a throwaway home, with the release build. All
 four modes passed with the script as committed at 62d4740 (`claude-code`,
 `kiro` and `mixed` re-run on 2026-10-27 after the `setsid`/`henv` change,
-`AGENTMAIL_E2E_TIMEOUT=300`, with no process left behind). All four
+`AGENT_COMMUNICATION_E2E_TIMEOUT=300`, with no process left behind). All four
 passed again, the same day, with the committed script after step 4 was
-tied to A's own session (see below; `AGENTMAIL_E2E_TIMEOUT=300`, kiro
-with `AGENTMAIL_E2E_MIN_LOGIN_SECS=600`):
+tied to A's own session (see below; `AGENT_COMMUNICATION_E2E_TIMEOUT=300`, kiro
+with `AGENT_COMMUNICATION_E2E_MIN_LOGIN_SECS=600`):
 
 | mode | result | steps checked |
 |---|---|---|
@@ -1336,9 +1336,9 @@ Those passes were recorded at 5c508f7. Behaviour changed after that:
 1be2eb8 (hook wait/status logic in `src/hook/mod.rs` and
 `src/hook/opencode.rs`), 185cb12 (`src/install/kiro.rs`, the CLI), 09d2876
 (the MCP `instructions`: agents stop rather than call `wait_for_mail`), and
-1cea955 (`AGENTMAIL_WAKE=0`). So the table above does not cover the
+1cea955 (`AGENT_COMMUNICATION_WAKE=0`). So the table above does not cover the
 current code. Re-run on 2026-10-27 at 1cea955 (release build,
-`AGENTMAIL_E2E_TIMEOUT=300`, `AGENTMAIL_E2E_MIN_LOGIN_SECS=600`, Claude
+`AGENT_COMMUNICATION_E2E_TIMEOUT=300`, `AGENT_COMMUNICATION_E2E_MIN_LOGIN_SECS=600`, Claude
 Code 2.1.312, opencode 2.0.27, kiro-cli 2.32.0):
 
 | mode | commit | result | steps checked |
@@ -1356,16 +1356,16 @@ opencode's login in (see "Logins" below). Both modes were then re-run on
 2026-10-27 on the code of 8c4a21e (HEAD at the time; the commit after it
 changes only the script and docs), with the script as committed in that
 next commit, the release build,
-`AGENTMAIL_E2E_OPENCODE_MODEL=opencode/claude-haiku-4-5` (a paid model on
-the copied OpenCode account login), `AGENTMAIL_E2E_TIMEOUT=300`,
-`AGENTMAIL_E2E_MIN_LOGIN_SECS=600`, Claude Code 2.1.312 and opencode
+`AGENT_COMMUNICATION_E2E_OPENCODE_MODEL=opencode/claude-haiku-4-5` (a paid model on
+the copied OpenCode account login), `AGENT_COMMUNICATION_E2E_TIMEOUT=300`,
+`AGENT_COMMUNICATION_E2E_MIN_LOGIN_SECS=600`, Claude Code 2.1.312 and opencode
 2.0.27. In `opencode` mode step 6 passed on opencode's own record (the
 plugin's wake ran a turn that saw the mail; the model did not reply). No
 process was left behind.
 
 - **Deviation from the plan: Claude Code's config.** The plan drives Claude
   Code as `claude -p --settings … --mcp-config …`. The script instead runs
-  `agentmail install --harness claude-code` into the throwaway
+  `agent-communication install --harness claude-code` into the throwaway
   `CLAUDE_CONFIG_DIR` and runs `claude -p` with neither flag, so Claude
   Code reads the installed user-scope config (`settings.json` and
   `.claude.json` there) and the e2e run also covers `install`.
@@ -1387,9 +1387,9 @@ process was left behind.
   copies are deleted when the script exits. Both harnesses ran on the
   access token alone. Since the copy cannot be refreshed, the script
   refuses a login that expires before the longest possible run ends: 6 ×
-  `AGENTMAIL_E2E_TIMEOUT` + 300 seconds by default (six waits plus
-  setup), or `AGENTMAIL_E2E_MIN_LOGIN_SECS`. A login close to expiry can
-  be used by lowering `AGENTMAIL_E2E_MIN_LOGIN_SECS`. The expiry is
+  `AGENT_COMMUNICATION_E2E_TIMEOUT` + 300 seconds by default (six waits plus
+  setup), or `AGENT_COMMUNICATION_E2E_MIN_LOGIN_SECS`. A login close to expiry can
+  be used by lowering `AGENT_COMMUNICATION_E2E_MIN_LOGIN_SECS`. The expiry is
   parsed with any number of fraction digits (none, 3, 6, 9). opencode's
   login (an OpenCode account, the `opencode` row of the `credential`
   table in `opencode.db`) is copied the same way when there is one: the
@@ -1420,9 +1420,9 @@ process was left behind.
   `A.out.err`) or A's own session's transcript, never the harness's whole
   data directory, since B's transcript sits in the same throwaway home
   and also carries the token. Claude Code: `projects/*/<session_id>.jsonl`
-  for the `session_id` in A's `-p` JSON (agentmail's record of A's
+  for the `session_id` in A's `-p` JSON (agent-communication's record of A's
   session as the fallback). opencode: the `session_message` rows of the
-  session agentmail recorded for A. kiro: agentmail records no session for
+  session agent-communication recorded for A. kiro: agent-communication records no session for
   kiro agents, so the script takes the kiro V3 session
   (`$KIRO_HOME/sessions/<workspace>/sess_<id>/`) whose `session.json`
   `createdAt` is before B was started (B starts only once A has
@@ -1436,7 +1436,7 @@ process was left behind.
 - **Two opencode sessions on one MCP server.** In `opencode` mode A ran
   under `opencode serve` with `run --server`, and B ran with `run
   --server` against the same server, in a session of its own, so both
-  sessions shared that server's one agentmail MCP server (Review Focus
+  sessions shared that server's one agent-communication MCP server (Review Focus
   3). The re-run's opencode database holds both sessions; each registered
   its own address (`backend-…`, `frontend-…`), the question was asked and
   answered between them, and each session got only its own mail (B's
@@ -1453,7 +1453,7 @@ process was left behind.
   re-run a wake for mail A had left unread came first (its `inbox` call
   did not list the new mail), then the wake for the new mail, whose
   `inbox` result showed the subject. The free model answered in text
-  rather than replying over agentmail, so the script accepts either a
+  rather than replying over agent-communication, so the script accepts either a
   reply in the thread or that recorded turn.
 - **Not checked headlessly:** waking under Claude Code (its wait hook
   stays silent outside the terminal UI, `claude -p` included) and under
@@ -1476,31 +1476,31 @@ process was left behind.
   waits up to 5 seconds and KILLs what is left, before stopping the
   daemon and removing the throwaway home. That catches kiro's
   `kiro-cli-chat` and engine `node`, opencode's MCP servers and the
-  plugin's `agentmail hook wait`. After this change `opencode` mode was
-  run again (2026-10-27, `AGENTMAIL_E2E_TIMEOUT=400`) and passed steps
-  1–4 and 6, with no agentmail-e2e process left afterwards.
+  plugin's `agent-communication hook wait`. After this change `opencode` mode was
+  run again (2026-10-27, `AGENT_COMMUNICATION_E2E_TIMEOUT=400`) and passed steps
+  1–4 and 6, with no agent-communication-e2e process left afterwards.
 - **The unix socket path limit** (about 100 bytes) ruled out a socket in
   the scratch directory; the script puts it in its own `mktemp -d
   /tmp/am-e2e.XXXXXX`.
 
 ### Bug found: the plugin hung `opencode run --standalone`
 
-With agentmail's plugin installed, every `run --standalone` session hung
+With agent-communication's plugin installed, every `run --standalone` session hung
 after its first tool call (`step_start`, then nothing, until killed;
 `--format json` then printed "Transport: The socket connection was closed
 unexpectedly"). Without the plugin the same run finished in seconds.
 Cause: `run --standalone` talks to its private server (`opencode serve
 --stdio`) over that server's stdin, and Bun's `$` (which the plugin used
 for `hook status` and `hook signoff`) gives the child the parent's stdin.
-`agentmail hook` reads its stdin to the end (the payload), so the first
+`agent-communication hook` reads its stdin to the end (the payload), so the first
 `hook status` after a tool call consumed the CLI's requests and waited for
 EOF. (Checked: `cat` run through `Bun.$` in a `bun` that has `x` piped
 into it prints `x`.) Under `opencode serve` stdin carries nothing for
 opencode, which is why the Task 6 checks, all on `serve`, never saw it.
-Fix: every agentmail command the plugin runs now goes through `Bun.spawn`
+Fix: every agent-communication command the plugin runs now goes through `Bun.spawn`
 with `stdin: "ignore"` (`hook wait` already passed its payload
 explicitly); the unit test
-`agentmail_commands_never_inherit_opencodes_stdin` runs the plugin in a
+`agent-communication_commands_never_inherit_opencodes_stdin` runs the plugin in a
 child process whose stdin holds data and checks that `hook status` and
 `hook signoff` read nothing.
 
@@ -1510,18 +1510,18 @@ Checked on 2026-10-27 against Claude Code 2.1.312 (`-p --model haiku`),
 opencode 2.0.27 and kiro-cli 2.32.0 (`chat --v3 --no-interactive`), each
 in a throwaway home (private `HOME`, `XDG_*`, `CLAUDE_CONFIG_DIR`,
 `KIRO_HOME`, logins copied without their refresh token), with
-`agentmail install --harness <h>` and the release build.
+`agent-communication install --harness <h>` and the release build.
 
-Method: beside agentmail, a fake stdio MCP server `canary` (one tool,
+Method: beside agent-communication, a fake stdio MCP server `canary` (one tool,
 `ping`) whose `instructions` are 2,150–2,170 characters of filler holding
 three random codewords: one at the start, one ending at character ~1,970
 (inside 2048) and one starting at character ~2,145 (past 2048). The agent
 was told not to call any tool and to list the three codewords and quote
-the first and last line of agentmail's instructions from its context,
+the first and last line of agent-communication's instructions from its context,
 writing MISSING for anything it could not see. Random codewords cannot be
 guessed, so a codeword in the answer was in the model's context.
 
-| harness | how | codewords one / two / three | agentmail's first and last line |
+| harness | how | codewords one / two / three | agent-communication's first and last line |
 |---|---|---|---|
 | Claude Code | live, model's answer | all three | both, verbatim |
 | opencode, `codemode: false` | live, the context opencode built (no model answer, see below) | all three | whole text |
@@ -1536,7 +1536,7 @@ guessed, so a codeword in the answer was in the model's context.
   server's text becomes `${e.slice(0,2048)} …[truncated]` (JS string
   length, so UTF-16 units), under "# MCP Server Instructions" fenced as
   "untrusted hints about how to use their tools", in the description of
-  kiro's tool-loading tool. agentmail's `INSTRUCTIONS` is ASCII and about
+  kiro's tool-loading tool. agent-communication's `INSTRUCTIONS` is ASCII and about
   1,100 characters; `mcp_instructions_carry_the_guidance` fails if it
   grows past 2048.
 - **opencode, model answer unavailable.** The first run (`run
@@ -1545,7 +1545,7 @@ guessed, so a codeword in the answer was in the model's context.
   limit reached" (HTTP 429), so no later run got a model reply. The
   MISSING answer was a startup race, not code mode: opencode connects a
   directory's MCP servers only when its first session starts, and that
-  turn's assistant message was created (00:07:48.110) before agentmail
+  turn's assistant message was created (00:07:48.110) before agent-communication
   and canary connected (48.145 and 48.259 in opencode's log); the
   session's context entries (`instruction_state`) had no
   `core/mcp-guidance`. The later runs therefore checked what opencode
@@ -1555,10 +1555,10 @@ guessed, so a codeword in the answer was in the model's context.
   context was built), reading opencode's database. With `codemode: false`
   and with `codemode: true` alike, the second session's
   `core/mcp-guidance` entry held both servers' instructions whole (all
-  three codewords, agentmail's full text), and the first session's second
+  three codewords, agent-communication's full text), and the first session's second
   turn got them as a system message ("… `<mcp_instructions>` …"). In code
   mode each server's block starts "Use tools from this server through
-  `execute` under `tools["agentmail"]`." The bundle's
+  `execute` under `tools["agent-communication"]`." The bundle's
   `McpInstructions.load` matches: a server's instructions are included
   when, in code mode, `execute` is not denied, and otherwise when at
   least one of its tools is not denied; nothing is truncated.
@@ -1566,7 +1566,7 @@ guessed, so a codeword in the answer was in the model's context.
   README said opencode shows a server's instructions only while one of
   its tools is directly reachable, hence `codemode: false`. 2.0.27 shows
   them in code mode too (above). `install` still writes `codemode: false`
-  so agentmail's tools are called directly, as on the other harnesses; the
+  so agent-communication's tools are called directly, as on the other harnesses; the
   README now gives that reason and says that a directory's first session
   gets the instructions from its second turn.
 
@@ -1592,7 +1592,7 @@ wake exists (`claude -p`, kiro without `--kiro-wake`, `opencode run
 (a headless `-p`/`--no-interactive` run cannot be woken), which is the
 human-asks case the instruction allows.
 
-### Turning waking off: `AGENTMAIL_WAKE=0` (branch review)
+### Turning waking off: `AGENT_COMMUNICATION_WAKE=0` (branch review)
 
 The spec's "Waking idle agents" asks for `register --no-wake` and a config
 setting to turn waking off. An earlier revision built only the per-agent
@@ -1600,20 +1600,20 @@ switch and recorded the global setting as left out. That was the human's
 decision, so the branch review reopened it, and the global switch is now
 built:
 
-- Per agent: `agentmail register --no-wake` (MCP `register` with
+- Per agent: `agent-communication register --no-wake` (MCP `register` with
   `wake: false`). `--wake` / `wake: true` turns it on. kiro's install-time
-  `--kiro-wake` sets `AGENTMAIL_KIRO_WAKE=1` for kiro's MCP server, which
+  `--kiro-wake` sets `AGENT_COMMUNICATION_KIRO_WAKE=1` for kiro's MCP server, which
   makes waking the default for kiro agents.
-- Globally: `AGENTMAIL_WAKE=0` (`identity::ENV_WAKE`). agentmail has no
+- Globally: `AGENT_COMMUNICATION_WAKE=0` (`identity::ENV_WAKE`). agent-communication has no
   config file, so the setting is an environment variable, set where the
   harness is started. Hook commands and shell commands inherit the
   harness's environment, and opencode's plugin passes `process.env` on to
-  every `agentmail hook` it spawns. Whether each harness also passes it to
+  every `agent-communication hook` it spawns. Whether each harness also passes it to
   its MCP server was not checked. That only affects the `wake` an MCP
   `register` records: the hooks check the variable themselves (below), so
   no wait runs either way. With the switch set:
   - `register` (CLI and MCP) records `wake` off, even with `--wake` /
-    `wake: true` or `AGENTMAIL_KIRO_WAKE=1` (`identity::register_wake`,
+    `wake: true` or `AGENT_COMMUNICATION_KIRO_WAKE=1` (`identity::register_wake`,
     `default_wake`).
   - Every hook reports `wake` off, whatever the agent registered with
     (`hook::Daemon::status`), so none waits or keeps wait state. Claude
@@ -1627,7 +1627,7 @@ built:
     `hook_claude::wait_respects_the_global_wake_switch`,
     `hook_opencode::global_wake_switch_turns_waking_off`,
     `hook_kiro::stop_silent_with_the_global_wake_switch_off`. The test
-    harnesses remove `AGENTMAIL_WAKE` from their child processes, and
+    harnesses remove `AGENT_COMMUNICATION_WAKE` from their child processes, and
     `scripts/e2e.sh` runs harnesses in a clean environment, so a user's
     own setting never affects a run.
 

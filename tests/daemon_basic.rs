@@ -7,12 +7,12 @@ use std::path::Path;
 use std::pin::pin;
 use std::time::{Duration, Instant};
 
-use agentmail::client::Client;
-use agentmail::daemon::handler::TOUCH_INTERVAL_MS;
-use agentmail::daemon::{DaemonConfig, MAX_SOCKET_PATH_BYTES, serve};
-use agentmail::model::HUMAN;
-use agentmail::paths::{LockRecord, Paths};
-use agentmail::protocol::{
+use agent_communication::client::Client;
+use agent_communication::daemon::handler::TOUCH_INTERVAL_MS;
+use agent_communication::daemon::{DaemonConfig, MAX_SOCKET_PATH_BYTES, serve};
+use agent_communication::model::HUMAN;
+use agent_communication::paths::{LockRecord, Paths};
+use agent_communication::protocol::{
     Caller, Envelope, ErrorCode, Event, MAX_REQUEST_BYTES, PROTOCOL_VERSION, Request, Response,
 };
 use common::{TestDaemon, agent, bin, register, send_req};
@@ -49,9 +49,9 @@ fn err_code(r: &Response) -> ErrorCode {
     }
 }
 
-/// PIDs of live `agentmail daemon run` processes serving `data_dir`.
+/// PIDs of live `agent-communication daemon run` processes serving `data_dir`.
 fn daemons_for(data_dir: &Path) -> Vec<u32> {
-    let needle = format!("AGENTMAIL_DATA_DIR={}", data_dir.display()).into_bytes();
+    let needle = format!("AGENT_COMMUNICATION_DATA_DIR={}", data_dir.display()).into_bytes();
     let mut out = Vec::new();
     for entry in std::fs::read_dir("/proc").unwrap().flatten() {
         let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
@@ -370,8 +370,8 @@ async fn second_daemon_exits_quietly_when_locked() {
     let d = TestDaemon::start().await;
     let out = tokio::process::Command::new(bin())
         .args(["daemon", "run"])
-        .env("AGENTMAIL_DATA_DIR", &d.paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &d.paths.socket)
+        .env("AGENT_COMMUNICATION_DATA_DIR", &d.paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &d.paths.socket)
         .output();
     let out = tokio::time::timeout(Duration::from_secs(5), out)
         .await
@@ -651,11 +651,11 @@ async fn socket_and_data_dir_permissions() {
     assert_eq!(sock.permissions().mode() & 0o777, 0o600);
 
     let dir = TempDir::new().unwrap();
-    let data_dir = dir.path().join("nested").join("agentmail");
+    let data_dir = dir.path().join("nested").join("agent-communication");
     let paths = Paths {
-        db: data_dir.join("agentmail.redb"),
-        lock: data_dir.join("agentmail.lock"),
-        socket: data_dir.join("agentmail.sock"),
+        db: data_dir.join("agent-communication.redb"),
+        lock: data_dir.join("agent-communication.lock"),
+        socket: data_dir.join("agent-communication.sock"),
         data_dir: data_dir.clone(),
     };
     let mut c = Client::connect_or_spawn_with(&paths, &bin()).await.unwrap();
@@ -707,8 +707,8 @@ fn daemon_cli_start_status_stop() {
     let run = |args: &[&str]| -> (Option<i32>, String) {
         let out = assert_cmd::Command::new(bin())
             .args(args)
-            .env("AGENTMAIL_DATA_DIR", &paths.data_dir)
-            .env("AGENTMAIL_SOCKET", &paths.socket)
+            .env("AGENT_COMMUNICATION_DATA_DIR", &paths.data_dir)
+            .env("AGENT_COMMUNICATION_SOCKET", &paths.socket)
             .timeout(Duration::from_secs(10))
             .output()
             .unwrap();
@@ -846,12 +846,12 @@ fn spawn_old_daemon(paths: &Paths) -> tokio::task::JoinHandle<Vec<Vec<&'static s
 async fn run_cli(paths: &Paths, args: &[&str]) -> (Option<i32>, String) {
     let out = tokio::process::Command::new(bin())
         .args(args)
-        .env("AGENTMAIL_DATA_DIR", &paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &paths.socket)
+        .env("AGENT_COMMUNICATION_DATA_DIR", &paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &paths.socket)
         .output();
     let out = tokio::time::timeout(Duration::from_secs(10), out)
         .await
-        .expect("agentmail timed out")
+        .expect("agent-communication timed out")
         .unwrap();
     (
         out.status.code(),
@@ -869,7 +869,7 @@ async fn daemon_cli_status_and_stop_handle_a_daemon_with_another_protocol() {
     assert_eq!(code, Some(3), "{out}");
     assert!(!out.contains("not running"), "{out}");
     assert!(out.contains("different protocol"), "{out}");
-    assert!(out.contains("agentmail daemon stop"), "{out}");
+    assert!(out.contains("agent-communication daemon stop"), "{out}");
 
     let (code, out) = run_cli(&paths, &["daemon", "status", "--json"]).await;
     assert_eq!(code, Some(3), "{out}");
@@ -1028,7 +1028,7 @@ async fn unopenable_store_fails_without_leaving_a_socket() {
 /// Set the database at `paths` to schema `version`, as a newer build would.
 fn set_schema_version(paths: &Paths, version: &str) {
     if !paths.db.exists() {
-        drop(agentmail::store::Store::open(&paths.db).unwrap());
+        drop(agent_communication::store::Store::open(&paths.db).unwrap());
     }
     let db = redb::Database::create(&paths.db).unwrap();
     let txn = db.begin_write().unwrap();
@@ -1076,7 +1076,7 @@ async fn a_failed_start_is_recorded_and_a_successful_one_clears_it() {
     let recorded = std::fs::read_to_string(paths.startup_error()).unwrap();
     assert!(recorded.contains("schema version 999"), "{recorded}");
 
-    set_schema_version(&paths, agentmail::store::SCHEMA_VERSION);
+    set_schema_version(&paths, agent_communication::store::SCHEMA_VERSION);
     let d = tokio::spawn(serve(cfg()));
     let mut c = Client::connect(&paths).await;
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -1137,7 +1137,7 @@ async fn bind_leaves_no_staging_files_and_replaces_leftovers() {
     let dir = TempDir::new().unwrap();
     let paths = Paths::in_dir(dir.path());
     // A crashed predecessor's staging directory and socket.
-    let staging = dir.path().join(".agentmail.sock.d");
+    let staging = dir.path().join(".agent-communication.sock.d");
     std::fs::create_dir(&staging).unwrap();
     let _old = std::os::unix::net::UnixListener::bind(staging.join("s")).unwrap();
     std::fs::write(&paths.socket, b"stale").unwrap();
@@ -1367,7 +1367,7 @@ async fn client_refuses_a_daemon_serving_another_data_dir() {
             "{msg}"
         );
         assert!(msg.contains(&other.path().display().to_string()), "{msg}");
-        assert!(msg.contains("AGENTMAIL_SOCKET"), "{msg}");
+        assert!(msg.contains("AGENT_COMMUNICATION_SOCKET"), "{msg}");
     };
 
     check(Client::connect(&paths).await.err().expect("connected"));
@@ -1423,7 +1423,7 @@ async fn daemon_status_reports_a_daemon_for_another_data_dir() {
     assert_eq!(code, Some(1), "{out}");
     assert!(!out.contains("not running"), "{out}");
     assert!(out.contains("not for this data directory"), "{out}");
-    assert!(out.contains("AGENTMAIL_SOCKET"), "{out}");
+    assert!(out.contains("AGENT_COMMUNICATION_SOCKET"), "{out}");
 
     let (code, out) = run_cli(&paths, &["daemon", "status", "--json"]).await;
     assert_eq!(code, Some(1), "{out}");
@@ -1451,7 +1451,7 @@ async fn daemon_stop_refuses_a_daemon_for_another_data_dir() {
     assert_eq!(code, Some(1), "{out}");
     assert!(!out.contains("daemon stopped"), "{out}");
     assert!(out.contains("not for this data directory"), "{out}");
-    assert!(out.contains("AGENTMAIL_SOCKET"), "{out}");
+    assert!(out.contains("AGENT_COMMUNICATION_SOCKET"), "{out}");
 
     let (code, out) = run_cli(&paths, &["daemon", "stop", "--json"]).await;
     assert_eq!(code, Some(1), "{out}");
@@ -1467,7 +1467,7 @@ async fn daemon_stop_refuses_a_daemon_for_another_data_dir() {
 
     let err = Client::shutdown(&paths).await.expect_err("stopped it");
     assert!(
-        err.downcast_ref::<agentmail::client::DataDirMismatch>()
+        err.downcast_ref::<agent_communication::client::DataDirMismatch>()
             .is_some(),
         "{err:#}"
     );
@@ -1666,13 +1666,13 @@ impl Stderr {
 }
 
 impl Foreground {
-    /// Start `agentmail <args>` for `paths` the way a systemd unit does,
+    /// Start `agent-communication <args>` for `paths` the way a systemd unit does,
     /// with `path_env` as its `PATH` when given.
     fn spawn(paths: &Paths, args: &[&str], path_env: Option<&std::ffi::OsStr>) -> Foreground {
         let mut cmd = std::process::Command::new(bin());
         cmd.args(args)
-            .env("AGENTMAIL_DATA_DIR", &paths.data_dir)
-            .env("AGENTMAIL_SOCKET", &paths.socket)
+            .env("AGENT_COMMUNICATION_DATA_DIR", &paths.data_dir)
+            .env("AGENT_COMMUNICATION_SOCKET", &paths.socket)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped());
@@ -1920,7 +1920,7 @@ async fn stall_in_git(
     cwd: &Path,
     started: &Path,
 ) -> (
-    tokio::task::JoinHandle<Result<Value, agentmail::client::ClientError>>,
+    tokio::task::JoinHandle<Result<Value, agent_communication::client::ClientError>>,
     KillOnDrop,
 ) {
     let req = common::register_req("slow", cwd);
@@ -2007,7 +2007,10 @@ async fn client_waits_for_the_supervisor_while_a_stopped_daemon_drains() {
     // Starting a daemon of its own would fail: there is no such binary.
     let client = tokio::spawn({
         let paths = paths.clone();
-        async move { Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agentmail")).await }
+        async move {
+            Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agent-communication"))
+                .await
+        }
     });
     let (status, err) = old.exit_within(PROCESS_WAIT).await;
     assert!(status.success(), "{status:?}: {err}");
@@ -2023,7 +2026,7 @@ async fn client_waits_for_the_supervisor_while_a_stopped_daemon_drains() {
     new.terminate().await;
 }
 
-/// `agentmail daemon stop` under `Restart=always`: once the supervised
+/// `agent-communication daemon stop` under `Restart=always`: once the supervised
 /// daemon has gone, a client waits for the one the supervisor starts after
 /// `RestartSec` instead of starting its own.
 #[tokio::test]
@@ -2042,9 +2045,10 @@ async fn client_waits_for_the_supervisor_to_restart_a_stopped_daemon() {
             .await
         }
     });
-    let mut c = Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agentmail"))
-        .await
-        .expect("the client did not wait for the supervisor");
+    let mut c =
+        Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agent-communication"))
+            .await
+            .expect("the client did not wait for the supervisor");
     assert_eq!(hello_pid(&mut c).await, u64::from(std::process::id()));
     c.call(&Caller::Human, Request::Shutdown).await.unwrap();
     tokio::time::timeout(Duration::from_secs(5), supervisor)
@@ -2062,7 +2066,7 @@ async fn unsupervised_version_mismatch_does_not_wait_for_a_successor() {
     let paths = Paths::in_dir(dir.path());
     let old = spawn_old_daemon(&paths);
     let began = Instant::now();
-    let err = Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agentmail"))
+    let err = Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agent-communication"))
         .await
         .err()
         .expect("connected without a daemon");
@@ -2072,7 +2076,7 @@ async fn unsupervised_version_mismatch_does_not_wait_for_a_successor() {
         began.elapsed()
     );
     assert!(
-        format!("{err:#}").contains("/nonexistent/agentmail"),
+        format!("{err:#}").contains("/nonexistent/agent-communication"),
         "{err:#}"
     );
     assert_eq!(old.await.unwrap(), vec![vec!["hello", "shutdown"]]);
@@ -2084,7 +2088,7 @@ async fn unsupervised_version_mismatch_does_not_wait_for_a_successor() {
 async fn signal_while_opening_a_busy_store_exits_cleanly() {
     let dir = TempDir::new().unwrap();
     let paths = Paths::in_dir(dir.path());
-    let store = agentmail::store::Store::open(&paths.db).unwrap();
+    let store = agent_communication::store::Store::open(&paths.db).unwrap();
     let mut child = Foreground::spawn(&paths, &["daemon", "run"], None);
     let deadline = Instant::now() + PROCESS_WAIT;
     while !paths.lock_held() {
@@ -2154,9 +2158,10 @@ async fn version_mismatch_uses_a_daemon_the_supervisor_restarts() {
         }
     });
     // Starting a daemon of its own would fail: there is no such binary.
-    let mut c = Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agentmail"))
-        .await
-        .unwrap();
+    let mut c =
+        Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agent-communication"))
+            .await
+            .unwrap();
     assert_eq!(hello_pid(&mut c).await, u64::from(std::process::id()));
     let (conns, daemon) = supervisor.await.unwrap();
     assert_eq!(conns, vec![vec!["hello", "shutdown"]]);
@@ -2221,7 +2226,7 @@ async fn client_starts_a_daemon_once_an_unsupervised_one_has_drained() {
     // The daemon binary, behind a script that notes when it is first run:
     // the time a daemon takes to start is not the client's to answer for.
     let spawned = dir.path().join("spawned");
-    let wrapper = dir.path().join("agentmail");
+    let wrapper = dir.path().join("agent-communication");
     std::fs::write(
         &wrapper,
         format!(
@@ -2273,7 +2278,7 @@ async fn client_waits_for_a_draining_daemon_only_so_long() {
 
     let began = Instant::now();
     // Starting a daemon of its own fails at once: there is no such binary.
-    let err = Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agentmail"))
+    let err = Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agent-communication"))
         .await
         .err()
         .expect("connected without a daemon");
@@ -2283,7 +2288,7 @@ async fn client_waits_for_a_draining_daemon_only_so_long() {
         "gave up after {waited:?}"
     );
     assert!(
-        format!("{err:#}").contains("/nonexistent/agentmail"),
+        format!("{err:#}").contains("/nonexistent/agent-communication"),
         "{err:#}"
     );
     drop(lock);
@@ -2305,7 +2310,7 @@ async fn client_does_not_wait_for_a_daemon_on_another_socket() {
     lock.try_lock().unwrap();
 
     let began = Instant::now();
-    let err = Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agentmail"))
+    let err = Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agent-communication"))
         .await
         .err()
         .expect("connected without a daemon");
@@ -2315,7 +2320,7 @@ async fn client_does_not_wait_for_a_daemon_on_another_socket() {
         began.elapsed()
     );
     assert!(
-        format!("{err:#}").contains("/nonexistent/agentmail"),
+        format!("{err:#}").contains("/nonexistent/agent-communication"),
         "{err:#}"
     );
     drop(lock);
@@ -2380,9 +2385,10 @@ async fn client_waits_for_a_unit_daemon_waiting_behind_an_on_demand_one() {
 
     assert!(Client::shutdown(&paths).await.unwrap());
     // Starting a daemon of its own would fail: there is no such binary.
-    let mut c = Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agentmail"))
-        .await
-        .expect("the client did not wait for the unit's daemon");
+    let mut c =
+        Client::connect_or_spawn_with(&paths, Path::new("/nonexistent/agent-communication"))
+            .await
+            .expect("the client did not wait for the unit's daemon");
     assert_eq!(hello_pid(&mut c).await, u64::from(unit.0.id()));
     drop(c);
     let (status, err) = on_demand.exit_within(PROCESS_WAIT).await;

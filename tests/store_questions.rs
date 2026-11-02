@@ -2,13 +2,13 @@
 
 use std::path::{Path, PathBuf};
 
-use agentmail::model::{HUMAN, Harness, Kind, Message, Question};
-use agentmail::store::{Alive, NewMessage, RegisterReq, Store, StoreError};
+use agent_communication::model::{HUMAN, Harness, Kind, Message, Question};
+use agent_communication::store::{Alive, NewMessage, RegisterReq, Store, StoreError};
 use tempfile::TempDir;
 
 fn store() -> (TempDir, Store) {
     let dir = TempDir::new().unwrap();
-    let store = Store::open(&dir.path().join("agentmail.redb")).unwrap();
+    let store = Store::open(&dir.path().join("agent-communication.redb")).unwrap();
     (dir, store)
 }
 
@@ -558,7 +558,7 @@ fn prune_removes_question_rows() {
 #[test]
 fn questions_survive_reopen() {
     let dir = TempDir::new().unwrap();
-    let path = dir.path().join("agentmail.redb");
+    let path = dir.path().join("agent-communication.redb");
     let (a, b, q) = {
         let s = Store::open(&path).unwrap();
         let a = agent(&s, "backend", None);

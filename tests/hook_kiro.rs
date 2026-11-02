@@ -1,4 +1,4 @@
-//! Harness Task 8: `agentmail hook` with kiro-cli V3's events.
+//! Harness Task 8: `agent-communication hook` with kiro-cli V3's events.
 //!
 //! kiro runs a hook command through `sh -c` under its engine's `node`,
 //! below `kiro-cli`; the hook resolves its agent by that ancestry, as
@@ -13,11 +13,11 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use agentmail::hook::{self, HookArgs, HookEvent, HookOutput};
-use agentmail::model::{Harness, ProcId};
-use agentmail::paths::Paths;
-use agentmail::procinfo;
-use agentmail::protocol::{Caller, Request};
+use agent_communication::hook::{self, HookArgs, HookEvent, HookOutput};
+use agent_communication::model::{Harness, ProcId};
+use agent_communication::paths::Paths;
+use agent_communication::procinfo;
+use agent_communication::protocol::{Caller, Request};
 use common::{TestDaemon, agent, send_req};
 use tempfile::TempDir;
 
@@ -35,8 +35,14 @@ struct Env(HashMap<String, OsString>);
 impl Env {
     fn of(paths: &Paths) -> Env {
         let mut m = HashMap::new();
-        m.insert("AGENTMAIL_DATA_DIR".into(), paths.data_dir.clone().into());
-        m.insert("AGENTMAIL_SOCKET".into(), paths.socket.clone().into());
+        m.insert(
+            "AGENT_COMMUNICATION_DATA_DIR".into(),
+            paths.data_dir.clone().into(),
+        );
+        m.insert(
+            "AGENT_COMMUNICATION_SOCKET".into(),
+            paths.socket.clone().into(),
+        );
         // kiro sets it for every hook command.
         m.insert(
             "KIRO_SESSION_ID".into(),
@@ -55,7 +61,7 @@ impl Env {
     }
 }
 
-/// Run `event` as `agentmail hook <event> --harness kiro [--wake]`.
+/// Run `event` as `agent-communication hook <event> --harness kiro [--wake]`.
 async fn run_wake(env: &Env, event: HookEvent, payload: &str, wake: bool) -> HookOutput {
     let args = HookArgs {
         wake,
@@ -427,10 +433,10 @@ async fn stop_wakes_once_for_mail_already_there() {
 #[tokio::test]
 async fn stop_silent_with_the_global_wake_switch_off() {
     // Installed with `--kiro-wake` and registered with `wake`, but
-    // `AGENTMAIL_WAKE=0` in kiro's environment: the Stop hook never waits.
+    // `AGENT_COMMUNICATION_WAKE=0` in kiro's environment: the Stop hook never waits.
     let d = TestDaemon::start().await;
     let a = register_here(&d, "backend", true).await;
-    let env = Env::of(&d.paths).with("AGENTMAIL_WAKE", "0");
+    let env = Env::of(&d.paths).with("AGENT_COMMUNICATION_WAKE", "0");
     let started = Instant::now();
     let out = run_wake(&env, HookEvent::Stop, "stop", true).await;
     assert!(silent(&out), "{out:?}");
@@ -579,7 +585,7 @@ async fn hook_latency_under_20ms() {
     ] {
         let median = median_time(&env, event, payload, false, |out| {
             assert_eq!(out.exit, 0, "{out:?}");
-            assert!(out.stdout.contains("agentmail"), "{out:?}");
+            assert!(out.stdout.contains("agent-communication"), "{out:?}");
         })
         .await;
         assert!(median < limit, "{event:?}: median {median:?}");
@@ -601,18 +607,18 @@ async fn hook_latency_under_20ms() {
 
 // Through the binary.
 
-/// `agentmail hook <args>` with `stdin`, in this daemon's environment.
+/// `agent-communication hook <args>` with `stdin`, in this daemon's environment.
 fn hook_cmd(paths: &Paths, args: &[&str], stdin: &[u8]) -> std::process::Output {
     use std::io::Write;
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_agentmail"))
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_agent-communication"))
         .arg("hook")
         .args(args)
-        .env("AGENTMAIL_DATA_DIR", &paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &paths.socket)
-        .env_remove("AGENTMAIL_ADDRESS")
-        .env_remove("AGENTMAIL_HUMAN")
-        .env_remove("AGENTMAIL_WAKE")
-        .env_remove("AGENTMAIL_BIN")
+        .env("AGENT_COMMUNICATION_DATA_DIR", &paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &paths.socket)
+        .env_remove("AGENT_COMMUNICATION_ADDRESS")
+        .env_remove("AGENT_COMMUNICATION_HUMAN")
+        .env_remove("AGENT_COMMUNICATION_WAKE")
+        .env_remove("AGENT_COMMUNICATION_BIN")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -661,7 +667,7 @@ async fn cli_exit_codes_and_streams() {
 #[test]
 fn cli_hook_daemon_down_is_silent() {
     // Through the binary: a hook that spawned a daemon would run this
-    // `agentmail`, whose daemon would make the socket and lock.
+    // `agent-communication`, whose daemon would make the socket and lock.
     let dir = TempDir::new().unwrap();
     let paths = Paths::in_dir(dir.path());
     for args in [
@@ -701,7 +707,7 @@ fn wake_flag_is_kiro_stop_only() {
     }
 }
 
-/// `agentmail hook stop --harness kiro --wake` run by a fake `kiro-cli`
+/// `agent-communication hook stop --harness kiro --wake` run by a fake `kiro-cli`
 /// (a copy of `/bin/sh` by that name, which stays the hook's parent and
 /// is its harness process) started with `extra` arguments. Returns the
 /// running fake and its pid; the hook starts once `go` exists.
@@ -737,13 +743,13 @@ fn fake_kiro_stops(
     let child = std::process::Command::new(&fake)
         .arg("-c")
         .arg(&script)
-        .arg(env!("CARGO_BIN_EXE_agentmail"))
+        .arg(env!("CARGO_BIN_EXE_agent-communication"))
         .args(extra)
-        .env("AGENTMAIL_DATA_DIR", &paths.data_dir)
-        .env("AGENTMAIL_SOCKET", &paths.socket)
-        .env_remove("AGENTMAIL_ADDRESS")
-        .env_remove("AGENTMAIL_HUMAN")
-        .env_remove("AGENTMAIL_WAKE")
+        .env("AGENT_COMMUNICATION_DATA_DIR", &paths.data_dir)
+        .env("AGENT_COMMUNICATION_SOCKET", &paths.socket)
+        .env_remove("AGENT_COMMUNICATION_ADDRESS")
+        .env_remove("AGENT_COMMUNICATION_HUMAN")
+        .env_remove("AGENT_COMMUNICATION_WAKE")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()

@@ -4,17 +4,17 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use agentmail::client::Client;
-use agentmail::daemon::{DaemonConfig, serve};
-use agentmail::model::Harness;
-use agentmail::paths::Paths;
-use agentmail::protocol::{Caller, Request};
+use agent_communication::client::Client;
+use agent_communication::daemon::{DaemonConfig, serve};
+use agent_communication::model::Harness;
+use agent_communication::paths::Paths;
+use agent_communication::protocol::{Caller, Request};
 use tempfile::TempDir;
 use tokio::task::JoinHandle;
 
-/// The built `agentmail` binary, for tests that spawn a real daemon.
+/// The built `agent-communication` binary, for tests that spawn a real daemon.
 pub fn bin() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_agentmail"))
+    PathBuf::from(env!("CARGO_BIN_EXE_agent-communication"))
 }
 
 /// A daemon served in-process from a fresh temporary directory. Dropping it

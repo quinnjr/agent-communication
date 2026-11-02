@@ -1,4 +1,4 @@
-//! agentmail: mail and blocking questions between coding agents and a human.
+//! agent-communication: mail and blocking questions between coding agents and a human.
 
 pub mod cli;
 pub mod client;

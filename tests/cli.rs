@@ -15,7 +15,7 @@ const MARKDOWN: &str = "```rust\nfn x(){}\n```\r\n| a | b |\n| - | - |\nnaÃ¯ve â
 
 const HUMAN_ADDR: &str = "human";
 
-const BIN: &str = env!("CARGO_BIN_EXE_agentmail");
+const BIN: &str = env!("CARGO_BIN_EXE_agent-communication");
 
 /// A private data directory and socket, with a daemon the CLI autostarts.
 /// Dropping it stops the daemon and the fake harness processes.
@@ -48,19 +48,19 @@ impl Env {
     }
 
     fn socket(&self) -> PathBuf {
-        self.dir.path().join("agentmail.sock")
+        self.dir.path().join("agent-communication.sock")
     }
 
-    /// `agentmail` with this environment and no identity.
+    /// `agent-communication` with this environment and no identity.
     fn cmd(&self) -> Command {
         let mut c = Command::new(BIN);
-        c.env("AGENTMAIL_DATA_DIR", self.data_dir())
+        c.env("AGENT_COMMUNICATION_DATA_DIR", self.data_dir())
             .env("KIRO_HOME", self.kiro_home())
-            .env("AGENTMAIL_SOCKET", self.socket())
-            .env_remove("AGENTMAIL_ADDRESS")
-            .env_remove("AGENTMAIL_HUMAN")
-            .env_remove("AGENTMAIL_WAKE")
-            .env_remove("AGENTMAIL_BIN")
+            .env("AGENT_COMMUNICATION_SOCKET", self.socket())
+            .env_remove("AGENT_COMMUNICATION_ADDRESS")
+            .env_remove("AGENT_COMMUNICATION_HUMAN")
+            .env_remove("AGENT_COMMUNICATION_WAKE")
+            .env_remove("AGENT_COMMUNICATION_BIN")
             .env_remove("OPENCODE_SESSION_ID")
             .env_remove("KIRO_SESSION_ID")
             .current_dir(&self.work)
@@ -68,15 +68,15 @@ impl Env {
         c
     }
 
-    /// `agentmail` run by a fake harness process named `harness` (a copy of
+    /// `agent-communication` run by a fake harness process named `harness` (a copy of
     /// `/bin/sh`, which stays the CLI's parent), with this environment and
-    /// no identity. Arguments added to it go to `agentmail`.
+    /// no identity. Arguments added to it go to `agent-communication`.
     fn under(&self, harness: &str) -> Command {
         // The trailing `exit` stops the shell from exec'ing the CLI.
         self.under_script(harness, r#""$0" "$@"; exit $?"#)
     }
 
-    /// `agentmail` run as a shell command of opencode session `id`: under a
+    /// `agent-communication` run as a shell command of opencode session `id`: under a
     /// fake `opencode` process, with OPENCODE_SESSION_ID set for the CLI
     /// only, not for the opencode process itself (opencode sets it for the
     /// commands its bash tool runs).
@@ -90,7 +90,7 @@ impl Env {
     }
 
     /// The fake harness `harness` (a shell) running `script`, with the
-    /// agentmail binary as `$0`, this environment and no identity.
+    /// agent-communication binary as `$0`, this environment and no identity.
     fn under_script(&self, harness: &str, script: &str) -> Command {
         let fake = self.dir.path().join(harness);
         if !fake.exists() {
@@ -98,13 +98,13 @@ impl Env {
         }
         let mut c = Command::new(&fake);
         c.args(["-c", script, BIN])
-            .env("AGENTMAIL_DATA_DIR", self.data_dir())
+            .env("AGENT_COMMUNICATION_DATA_DIR", self.data_dir())
             .env("KIRO_HOME", self.kiro_home())
-            .env("AGENTMAIL_SOCKET", self.socket())
-            .env_remove("AGENTMAIL_ADDRESS")
-            .env_remove("AGENTMAIL_HUMAN")
-            .env_remove("AGENTMAIL_WAKE")
-            .env_remove("AGENTMAIL_BIN")
+            .env("AGENT_COMMUNICATION_SOCKET", self.socket())
+            .env_remove("AGENT_COMMUNICATION_ADDRESS")
+            .env_remove("AGENT_COMMUNICATION_HUMAN")
+            .env_remove("AGENT_COMMUNICATION_WAKE")
+            .env_remove("AGENT_COMMUNICATION_BIN")
             .env_remove("OPENCODE_SESSION_ID")
             .env_remove("KIRO_SESSION_ID")
             .current_dir(&self.work)
@@ -112,14 +112,14 @@ impl Env {
         c
     }
 
-    /// `agentmail` acting as agent `addr`.
+    /// `agent-communication` acting as agent `addr`.
     fn as_agent(&self, addr: &str) -> Command {
         let mut c = self.cmd();
-        c.env("AGENTMAIL_ADDRESS", addr);
+        c.env("AGENT_COMMUNICATION_ADDRESS", addr);
         c
     }
 
-    /// `agentmail --as human`.
+    /// `agent-communication --as human`.
     fn as_human(&self) -> Command {
         let mut c = self.cmd();
         c.arg("--as").arg("human");
@@ -152,8 +152,8 @@ impl Drop for Env {
     fn drop(&mut self) {
         let _ = StdCommand::new(BIN)
             .args(["daemon", "stop"])
-            .env("AGENTMAIL_DATA_DIR", self.data_dir())
-            .env("AGENTMAIL_SOCKET", self.socket())
+            .env("AGENT_COMMUNICATION_DATA_DIR", self.data_dir())
+            .env("AGENT_COMMUNICATION_SOCKET", self.socket())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
@@ -424,7 +424,7 @@ fn ask_pending_exit_code_3() {
         .unwrap();
     assert_eq!(out.status.code(), Some(3));
     assert!(
-        text(&out.stdout).contains("agentmail await"),
+        text(&out.stdout).contains("agent-communication await"),
         "{}",
         text(&out.stdout)
     );
@@ -529,7 +529,7 @@ fn register_refuses_the_human() {
     assert!(text(&out.stderr).contains("human"), "{}", text(&out.stderr));
     let out = env
         .cmd()
-        .env("AGENTMAIL_HUMAN", "1")
+        .env("AGENT_COMMUNICATION_HUMAN", "1")
         .args(["register", "foo"])
         .output()
         .unwrap();
@@ -829,10 +829,10 @@ fn watch_prints_one_line_per_event() {
     ok_text(env.cmd().args(["daemon", "start"]));
     let mut watcher = StdCommand::new(BIN)
         .args(["watch", "--json"])
-        .env("AGENTMAIL_DATA_DIR", env.data_dir())
-        .env("AGENTMAIL_SOCKET", env.socket())
-        .env("AGENTMAIL_HUMAN", "1")
-        .env_remove("AGENTMAIL_ADDRESS")
+        .env("AGENT_COMMUNICATION_DATA_DIR", env.data_dir())
+        .env("AGENT_COMMUNICATION_SOCKET", env.socket())
+        .env("AGENT_COMMUNICATION_HUMAN", "1")
+        .env_remove("AGENT_COMMUNICATION_ADDRESS")
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
@@ -962,11 +962,11 @@ fn empty_recipient_is_usage_error() {
 fn closed_stdout(env: &Env, args: &[&str]) -> std::process::ExitStatus {
     let mut child = StdCommand::new(BIN)
         .args(args)
-        .env("AGENTMAIL_DATA_DIR", env.data_dir())
-        .env("AGENTMAIL_SOCKET", env.socket())
-        .env_remove("AGENTMAIL_ADDRESS")
-        .env_remove("AGENTMAIL_HUMAN")
-        .env_remove("AGENTMAIL_WAKE")
+        .env("AGENT_COMMUNICATION_DATA_DIR", env.data_dir())
+        .env("AGENT_COMMUNICATION_SOCKET", env.socket())
+        .env_remove("AGENT_COMMUNICATION_ADDRESS")
+        .env_remove("AGENT_COMMUNICATION_HUMAN")
+        .env_remove("AGENT_COMMUNICATION_WAKE")
         .current_dir(&env.work)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -1414,7 +1414,7 @@ fn register_in_session_with_outside_pid_drops_the_session() {
 
 /// Harness Task 8: under kiro-cli, waking is opt-in (the human cannot
 /// reach the agent while its Stop hook waits), so `register` leaves `wake`
-/// off unless asked, or unless `AGENTMAIL_KIRO_WAKE=1` (what `install
+/// off unless asked, or unless `AGENT_COMMUNICATION_KIRO_WAKE=1` (what `install
 /// --kiro-wake` gives the MCP server). Other harnesses keep it on.
 #[test]
 fn register_wake_defaults_off_for_kiro() {
@@ -1422,20 +1422,20 @@ fn register_wake_defaults_off_for_kiro() {
     let wake = |c: &mut Command| ok_json(c)["agent"]["wake"].clone();
     let reg = |c: Command, name: &str| {
         let mut c = c;
-        c.env_remove("AGENTMAIL_KIRO_WAKE")
+        c.env_remove("AGENT_COMMUNICATION_KIRO_WAKE")
             .args(["register", name, "--json", "--fresh"]);
         c
     };
     assert_eq!(wake(&mut reg(env.under("kiro-cli"), "k1")), false);
     assert_eq!(wake(reg(env.under("kiro-cli"), "k2").arg("--wake")), true);
     assert_eq!(
-        wake(reg(env.under("kiro-cli"), "k3").env("AGENTMAIL_KIRO_WAKE", "1")),
+        wake(reg(env.under("kiro-cli"), "k3").env("AGENT_COMMUNICATION_KIRO_WAKE", "1")),
         true
     );
     assert_eq!(
         wake(
             reg(env.under("kiro-cli"), "k4")
-                .env("AGENTMAIL_KIRO_WAKE", "1")
+                .env("AGENT_COMMUNICATION_KIRO_WAKE", "1")
                 .arg("--no-wake")
         ),
         false
@@ -1452,11 +1452,11 @@ fn register_wake_defaults_off_for_kiro() {
     assert_eq!(v, false);
     // Other harnesses keep waking on by default.
     assert_eq!(wake(&mut reg(env.under("claude"), "c1")), true);
-    // `AGENTMAIL_WAKE=0` turns waking off for every harness, `--wake` and
-    // `AGENTMAIL_KIRO_WAKE=1` included.
+    // `AGENT_COMMUNICATION_WAKE=0` turns waking off for every harness, `--wake` and
+    // `AGENT_COMMUNICATION_KIRO_WAKE=1` included.
     let off = |c: Command, name: &str| {
         let mut c = reg(c, name);
-        c.env("AGENTMAIL_WAKE", "0");
+        c.env("AGENT_COMMUNICATION_WAKE", "0");
         c
     };
     assert_eq!(wake(&mut off(env.under("claude"), "c2")), false);
@@ -1465,7 +1465,7 @@ fn register_wake_defaults_off_for_kiro() {
     assert_eq!(
         wake(
             off(env.under("kiro-cli"), "k7")
-                .env("AGENTMAIL_KIRO_WAKE", "1")
+                .env("AGENT_COMMUNICATION_KIRO_WAKE", "1")
                 .arg("--wake")
         ),
         false
@@ -1478,9 +1478,9 @@ fn register_wake_defaults_off_for_kiro() {
     assert_eq!(out.status.code(), Some(2), "{out:?}");
 }
 
-/// kiro gives `AGENTMAIL_KIRO_WAKE` only to the MCP server, not to the
+/// kiro gives `AGENT_COMMUNICATION_KIRO_WAKE` only to the MCP server, not to the
 /// commands its shell tool runs, so after `install --kiro-wake` the CLI's
-/// `register`, with no agentmail MCP server of kiro's running (see
+/// `register`, with no agent-communication MCP server of kiro's running (see
 /// `register_wake_follows_kiros_running_mcp_server`), reads the installed
 /// MCP entry: the user's (`KIRO_HOME`), or
 /// the workspace's `.kiro/settings/mcp.json`, which decides when it has
@@ -1490,7 +1490,7 @@ fn register_wake_follows_install_kiro_wake() {
     let env = Env::new();
     let wake = |name: &str| {
         let mut c = env.under("kiro-cli");
-        c.env_remove("AGENTMAIL_KIRO_WAKE")
+        c.env_remove("AGENT_COMMUNICATION_KIRO_WAKE")
             .args(["register", name, "--json", "--fresh"]);
         ok_json(&mut c)["agent"]["wake"].clone()
     };
@@ -1513,7 +1513,7 @@ fn register_wake_follows_install_kiro_wake() {
 }
 
 /// A kiro shell command often runs in a subdirectory of the workspace
-/// (`cd crates/x && agentmail register ...`): the workspace whose
+/// (`cd crates/x && agent-communication register ...`): the workspace whose
 /// `.kiro/settings/mcp.json` counts is kiro's (the working directory of
 /// the `kiro-cli` process), not the CLI's own.
 #[test]
@@ -1527,7 +1527,7 @@ fn register_wake_reads_kiros_workspace_from_a_subdirectory() {
             "kiro-cli",
             r#"/bin/sh -c 'cd crates/x && exec "$0" "$@"' "$0" "$@"; exit $?"#,
         );
-        c.env_remove("AGENTMAIL_KIRO_WAKE")
+        c.env_remove("AGENT_COMMUNICATION_KIRO_WAKE")
             .args(["register", name, "--json", "--fresh"]);
         ok_json(&mut c)["agent"]["wake"].clone()
     };
@@ -1544,7 +1544,7 @@ fn register_wake_reads_kiros_workspace_from_a_subdirectory() {
     assert_eq!(wake("k2"), false);
 }
 
-/// Under kiro-cli the CLI takes its wake default from agentmail's MCP
+/// Under kiro-cli the CLI takes its wake default from agent-communication's MCP
 /// server that kiro itself is running, read from that process's
 /// environment, before the installed config: the server is what kiro
 /// started with the `env` it settled on. A server that a nested harness
@@ -1560,7 +1560,7 @@ fn register_wake_follows_kiros_running_mcp_server() {
     // A fake kiro-cli runs `servers`, which start MCP servers in the
     // background, each reading the fifo `$F` (so it sees end of input and
     // exits once this kiro-cli does) and writing its pid to
-    // `$D/pid.$N.<i>`. It waits until each has exec'd agentmail, then runs
+    // `$D/pid.$N.<i>`. It waits until each has exec'd agent-communication, then runs
     // `register` (without the fifo, so the daemon it starts does not hold
     // the servers open).
     let wake = |name: &str, servers: &str| {
@@ -1577,7 +1577,7 @@ done
         let mut c = env.under_script("kiro-cli", &script);
         c.env("D", &dir)
             .env("N", name)
-            .env_remove("AGENTMAIL_KIRO_WAKE")
+            .env_remove("AGENT_COMMUNICATION_KIRO_WAKE")
             .args(["register", name, "--json", "--fresh"]);
         ok_json(&mut c)["agent"]["wake"].clone()
     };
@@ -1601,7 +1601,7 @@ done
 
     // The installed config says off; kiro's running server says on.
     install(&[]);
-    assert_eq!(wake("k1", &own(1, "AGENTMAIL_KIRO_WAKE=1")), true);
+    assert_eq!(wake("k1", &own(1, "AGENT_COMMUNICATION_KIRO_WAKE=1")), true);
     // The installed config says on; kiro's running server says off.
     install(&["--kiro-wake"]);
     assert_eq!(wake("k2", &own(1, "")), false);
@@ -1610,10 +1610,16 @@ done
 
     install(&[]);
     // A server a nested harness started is not kiro's.
-    assert_eq!(wake("k4", &under_claude(1, "AGENTMAIL_KIRO_WAKE=1")), false);
+    assert_eq!(
+        wake("k4", &under_claude(1, "AGENT_COMMUNICATION_KIRO_WAKE=1")),
+        false
+    );
     // Nor is one carrying another kiro session.
     assert_eq!(
-        wake("k5", &own(1, "KIRO_SESSION_ID=other AGENTMAIL_KIRO_WAKE=1")),
+        wake(
+            "k5",
+            &own(1, "KIRO_SESSION_ID=other AGENT_COMMUNICATION_KIRO_WAKE=1")
+        ),
         false
     );
     // Those are ignored next to kiro's own server too.
@@ -1621,13 +1627,13 @@ done
     let both = format!(
         "{}\n{}",
         own(1, ""),
-        own(2, "KIRO_SESSION_ID=other AGENTMAIL_KIRO_WAKE=1")
+        own(2, "KIRO_SESSION_ID=other AGENT_COMMUNICATION_KIRO_WAKE=1")
     );
     assert_eq!(wake("k6", &both), false);
     let both = format!(
         "{}\n{}",
         own(1, ""),
-        under_claude(2, "AGENTMAIL_KIRO_WAKE=1")
+        under_claude(2, "AGENT_COMMUNICATION_KIRO_WAKE=1")
     );
     assert_eq!(wake("k7", &both), false);
 }
